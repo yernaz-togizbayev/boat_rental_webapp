@@ -205,3 +205,28 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- Docker ---
+# Local env files
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Compose overrides
+docker-compose.override.yml
+compose.override.yml
+
+# Docker volumes / local data dirs
+**/docker-data/
+**/data/
+**/volumes/
+
+# Build / runtime artifacts
+**/*.log
+**/.cache/
+**/tmp/
+
+# ignore Docker Desktop / tooling files
+**/.docker/
+
