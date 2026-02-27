@@ -1,0 +1,44 @@
+{
+  "manager_id": "M2",
+  "name": {
+    "first": "Anna",
+    "last": "Smith"
+  },
+  "department": "HR",
+  "management_level": "Senior",
+  "office": {
+    "office_id": "O1",
+    "city": "Mykonos",
+    "country": "Greece"
+  },
+  "supervisor_id": "M1",
+  "supervised_staff": [
+    {
+      "staff_id": "S1",
+      "name": {
+        "first": "Jane",
+        "last": "Doe"
+      },
+      "work_shift": "Morning",
+      "is_on_duty": true
+    },
+    {
+      "staff_id": "S2",
+      "name": {
+		"first": "Emily",
+        "last": "Brown"
+      },
+      "work_shift": "Evening",
+      "is_on_duty": false
+    },
+    {
+      "staff_id": "S8",
+      "name": {
+        "first": "Lena",
+        "last": "Karras"
+      },
+      "work_shift": "Evening",
+      "is_on_duty": true
+    }
+  ]
+}

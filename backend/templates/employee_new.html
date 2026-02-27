@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="content-section">
+  <h2>Hire new employee</h2>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+          {{ message }} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        <ul class="mb-0">
+          {% for field, errors in form.errors.items() %}
+            {% for err in errors %}
+              <li>{{ form[field].label.text if field in form else field }}: {{ err }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    
+  {% endwith %}
+
+  <form method="post">
+    {{ form.hidden_tag() }}
+    {% include "partials/employee_form_fields.html" %}
+    <div class="mt-3">
+      {{ form.submit(class="btn btn-success") }}
+      <a class="btn btn-secondary ms-2" href="{{ url_for('list_employees') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

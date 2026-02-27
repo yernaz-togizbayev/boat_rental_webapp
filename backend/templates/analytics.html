@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="content-section">
+    <h2>Analytics report</h2>
+    <p class="text-muted">Available boats by city and date range</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else 'warning' if category == 'warning' else 'success' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Filter options</h5>
+        </div>
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-3">
+                    <label for="city" class="form-label">City:</label>
+                    <select name="city" id="city" class="form-control">
+                        {% for office in offices %}
+                        <option value="{{ office.City }}" {% if office.City == current_filter %}selected{% endif %}>
+                            {{ office.City }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="start_date" class="form-label">Start date:</label>
+                    <input type="date" name="start_date" id="start_date" class="form-control" 
+                           value="{{ start_date.strftime('%Y-%m-%d') }}">
+                </div>
+                <div class="col-md-3">
+                    <label for="end_date" class="form-label">End date:</label>
+                    <input type="date" name="end_date" id="end_date" class="form-control" 
+                           value="{{ end_date.strftime('%Y-%m-%d') }}">
+                </div>
+                <div class="col-md-3">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="btn btn-primary form-control">Apply filters</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">{{ total_boats }}</h5>
+                    <p class="card-text">Total boats</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-success">{{ available_count }}</h5>
+                    <p class="card-text">Available boats</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-info">{{ boats|length }}</h5>
+                    <p class="card-text">Available in {{ current_filter }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-warning">{{ rentals_in_period }}</h5>
+                    <p class="card-text">Rentals in period</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <h6 class="mb-1">Current Analysis Period</h6>
+        <p class="mb-0">
+            <strong>City:</strong> {{ current_filter }} | 
+            <strong>Period:</strong> {{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }} 
+            ({{ period_days }} day{{ 's' if period_days != 1 else '' }})
+        </p>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h4>Available Boats in {{ current_filter }}</h4>
+            <small class="text-muted">
+                Boats available during {{ start_date.strftime('%Y-%m-%d') }} to {{ end_date.strftime('%Y-%m-%d') }}
+            </small>
+        </div>
+        <div class="card-body">
+            {% if boats %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Boat ID</th>
+                            <th>Manufacturer</th>
+                            <th>Length (m)</th>
+                            <th>Seats</th>
+                            <th>Weight (kg)</th>
+                            <th>Horsepower</th>
+                            <th>Type</th>
+                            <th>Office City</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for boat, office in boats %}
+                        <tr>
+                            <td><strong>{{ boat.BoatID }}</strong></td>
+                            <td>{{ boat.Manufacturer }}</td>
+                            <td>{{ "%.1f"|format(boat.Length) }}</td>
+                            <td>{{ boat.Seats }}</td>
+                            <td>{{ "%.0f"|format(boat.Weight) }}</td>
+                            <td>{{ boat.Horsepower }} HP</td>
+                            <td>
+                                {% if boat.yacht %}
+                                    <span class="badge bg-warning">Yacht</span>
+                                {% elif boat.motorboat %}
+                                    <span class="badge bg-success">Motorboat</span>
+                                {% elif boat.catamaran %}
+                                    <span class="badge bg-primary">Catamaran</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Boat</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-primary">{{ office.City }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-success">{{ boat.AvailabilityStatus }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info text-center">
+                <h4>No Available Boats Found</h4>
+                <p>No boats are available in <strong>{{ current_filter }}</strong> during the period 
+                   <strong>{{ start_date.strftime('%B %d, %Y') }}</strong> to <strong>{{ end_date.strftime('%B %d, %Y') }}</strong>.</p>
+                <p class="mb-0">Try selecting a different city or date range.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    </div>{% endblock %}

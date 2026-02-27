@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+   <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}" />
+    <title>{% block head %}Boat Rental Company{% endblock %}</title>
+  </head>
+  <body>
+    <!-- Header Section -->
+    <header class="site-header">
+      <nav class="navbar navbar-expand-md navbar-dark bg-steel fixed-top">
+        <div class="container">
+          <a class="navbar-brand me-4">Boat Rental</a>
+          <button class="navbar-toggler" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#navbarToggle"
+                  aria-controls="navbarToggle" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navbarToggle">
+            <!-- Navbar Left Side -->
+            <div class="navbar-nav me-auto">
+              {% if session.manager %}
+                <a class="nav-item nav-link" href="{{ url_for('list_employees') }}">Employee list</a>
+                <a class="nav-item nav-link" href="{{ url_for('hire_employee') }}">Hire</a>
+              {% elif session.client %}
+                <a class="nav-item nav-link" href="{{ url_for('booking') }}">Book Rental</a>
+                <a class="nav-item nav-link" href="{{ url_for('report') }}">My Rentals</a>
+                <a class="nav-item nav-link" href="{{ url_for('analytics') }}">Analytics</a>
+              {% else %}
+                <a class="nav-item nav-link" href="{{ url_for('index') }}">Home</a>
+                <a class="nav-item nav-link" href="{{ url_for('booking') }}">Booking</a>
+              {% endif %}
+              {% block navbar %}{% endblock %}
+            </div>
+
+            <!-- Navbar Right Side -->
+            <div class="navbar-nav">              
+              {% if session.manager %}
+                <span class="nav-item nav-link">Manager: {{ session.manager.FullName }}</span>
+                <a class="nav-item nav-link" href="{{ url_for('manager_login') }}">Switch manager</a>
+                <a class="nav-item nav-link" href="{{ url_for('manager_logout') }}">Logout (Manager)</a>
+              {% elif session.client %}
+                <span class="nav-item nav-link">Welcome, {{ session.client.FirstName }}!</span>
+                <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+              {% else %}
+                <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
+                <a class="nav-item nav-link" href="{{ url_for('manager_login') }}">Manager Login</a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Main Content Section -->
+    <main role="main" class="container" style="padding-top: 4.5rem;">
+      <div class="row">
+        <div class="col-md-8">
+          {% block body %}{% endblock %}
+        </div>
+        <div class="col-md-4">
+          <div class="content-section">
+            <form method="post" action="{{ url_for('reset_data') }}" style="display: inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-success" 
+                onclick="return confirm('This will replace all existing data. Continue?')">
+                Generate Data
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </main>
+
+
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
+            crossorigin="anonymous">
+    </script>
+
+  </body>
+</html>

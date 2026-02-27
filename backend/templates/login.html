@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="content-section">
+<h2>Select a client to continue!</h2>
+<ul>
+  {% for c in clients %}
+    <li class="list-group-item">
+      <a href="{{ url_for('select_client', client_id=c.ClientID) }}">
+      {{ c.FirstName }} {{ c.LastName }} {{ c.ClientID }}
+      </a>
+    </li>
+  {% endfor %}
+</ul>
+</div>
+{% endblock %}

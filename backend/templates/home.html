@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="content-section">
+    <h1>Welcome, {{ client["FirstName"] }}</h1>
+</div>
+
+<div class="login mb-4">
+  <img src="{{ url_for('static', filename='img/login_pic.jpg') }}" alt="Paradise">
+  <div class="overlay">
+    <h1 class="display-6 mb-2">Sail into your next adventure</h1>
+    <p class="lead mb-3">Yachts, catamarans, and motorboats in beautiful locations.</p>
+    <a class="btn btn-primary btn-lg" href="/booking">Book a boat</a>
+  </div>
+</div>
+{% endblock %}

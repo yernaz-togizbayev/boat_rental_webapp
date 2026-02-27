@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="content-section">
+    <h2>Book a Boat Rental</h2>
+    <p class="text-muted">Select city and dates to find available boats</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Search Available Boats</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {{ search_form.hidden_tag() }}
+                <div class="row">
+                    <div class="col-md-3">
+                        {{ search_form.city.label(class="form-label") }}
+                        {{ search_form.city(class="form-control") }}
+                        {% if search_form.city.errors %}
+                            <div class="text-danger">
+                                {% for error in search_form.city.errors %}
+                                    <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3">
+                        {{ search_form.start_date.label(class="form-label") }}
+                        {{ search_form.start_date(class="form-control") }}
+                        {% if search_form.start_date.errors %}
+                            <div class="text-danger">
+                                {% for error in search_form.start_date.errors %}
+                                    <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3">
+                        {{ search_form.end_date.label(class="form-label") }}
+                        {{ search_form.end_date(class="form-control") }}
+                        {% if search_form.end_date.errors %}
+                            <div class="text-danger">
+                                {% for error in search_form.end_date.errors %}
+                                    <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3">
+                        <label>&nbsp;</label>
+                        {{ search_form.search(class="btn btn-primary form-control") }}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if available_boats %}
+    <div class="card">
+        <div class="card-header">
+            <h5>Available Boats in {{ search_params.city }}</h5>
+            <small class="text-muted">
+                {{ search_params.start_date.strftime('%Y-%m-%d') }} to {{ search_params.end_date.strftime('%Y-%m-%d') }} 
+                ({{ rental_days }} day{{ 's' if rental_days != 1 else '' }})
+            </small>
+        </div>
+        <div class="card-body">
+            {% if booking_form %}
+            <form method="post">
+                {{ booking_form.hidden_tag() }}
+                {{ booking_form.rental_date() }}
+                {{ booking_form.rental_end_date() }}
+                
+                <div class="mb-3">
+                    {{ booking_form.boat_id.label(class="form-label") }}
+                    {{ booking_form.boat_id(class="form-control") }}
+                    {% if booking_form.boat_id.errors %}
+                        <div class="text-danger">
+                            {% for error in booking_form.boat_id.errors %}
+                                <small>{{ error }}</small>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <button type="submit" name="book" value="true" class="btn btn-success btn-lg" 
+                        onclick="return confirm('Book selected boat for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}?')">
+                    Book for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}
+                </button>
+            </form>
+            {% endif %}
+            
+            <div class="mt-4">
+                <h6>Available boats ({{ available_boats|length }} found):</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Boat ID</th>
+                                <th>Manufacturer</th>
+                                <th>Length</th>
+                                <th>Seats</th>
+                                <th>Power</th>
+                                <th>Type</th>
+                                <th>Office</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for boat, office in available_boats %}
+                            <tr>
+                                <td><strong>{{ boat.BoatID }}</strong></td>
+                                <td>{{ boat.Manufacturer }}</td>
+                                <td>{{ "%.1f"|format(boat.Length) }}m</td>
+                                <td>{{ boat.Seats }}</td>
+                                <td>{{ boat.Horsepower }}HP</td>
+                                <td>
+                                    {% if boat.yacht %}
+                                        <span class="badge bg-warning">Yacht</span>
+                                    {% elif boat.motorboat %}
+                                        <span class="badge bg-success">Motorboat</span>
+                                    {% elif boat.catamaran %}
+                                        <span class="badge bg-primary">Catamaran</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Boat</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ office.City }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% elif search_params.city %}
+    <div class="alert alert-info">
+        <h4>No boats available!</h4>
+        <p>No boats available in <strong>{{ search_params.city }}</strong> for {{ search_params.start_date.strftime('%Y-%m-%d') }} to {{ search_params.end_date.strftime('%Y-%m-%d') }}.</p>
+        <p>Try different dates or another city.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

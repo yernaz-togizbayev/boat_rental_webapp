@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="content-section">
+<h2>Your Rentals</h2>
+{% if rentals %}
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Boat ID</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Payment Status</th>
+                <th>Duration (Days)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rental in rentals %}
+            <tr>
+                <td>{{ rental.BoatID }}</td>
+                <td>{{ rental.RentalDate }}</td>
+                <td>{{ rental.RentalEndDate }}</td>
+                <td>
+                    <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
+                        {{ rental.PaymentStatus }}
+                    </span>
+                </td>
+                <td>{{ rental.rental_days }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <h4>No rentals found</h4>
+    <p>You haven't made any boat rentals yet.</p>
+    <a href="{{ url_for('booking') }}" class="btn btn-primary">Book Your First Rental</a>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}
