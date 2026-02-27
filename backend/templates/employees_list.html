@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="content-section">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Employees</h2>
+    <div>
+      <a class="btn btn-secondary me-2" href="{{ url_for('manager_logout') }}">Logout manager</a>
+      <a class="btn btn-primary" href="{{ url_for('hire_employee') }}">Hire new employee</a>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% if employees %}
+  <div class="table-responsive">
+    <table class="table table-striped table-sm align-middle">
+      <thead>
+        <tr>
+          <th>ID</th><th>Name</th><th>Office</th><th>Email</th><th>Role</th><th style="width:160px">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in employees %}
+        <tr>
+          <td>{{ e.EmployeeID }}</td>
+          <td>{{ e.FirstName }} {{ e.LastName }}</td>
+          <td>{{ e.office.City }} ({{ e.OfficeID }})</td>
+          <td>{{ e.Email }}</td>
+          <td>{{ roles.get(e.EmployeeID, '-') }}</td>
+          <td>
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('edit_employee', emp_id=e.EmployeeID) }}">Edit</a>
+            <form method="post" action="{{ url_for('delete_employee', emp_id=e.EmployeeID) }}" style="display:inline" onsubmit="return confirm('Delete this employee?')">
+              {{ delete_form.hidden_tag() }}
+              <button class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="alert alert-info">No employees found. <a href="{{ url_for('hire_employee') }}">Hire one</a>.</div>
+  {% endif %}
+</div>
+{% endblock %}

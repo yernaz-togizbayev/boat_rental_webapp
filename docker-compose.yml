@@ -1,0 +1,29 @@
+services:
+  db:
+    image: mariadb:11.3
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: boatdb
+      MYSQL_USER: user
+      MYSQL_PASSWORD: pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./database:/docker-entrypoint-initdb.d/
+
+  backend:
+    build: ./backend
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: boatdb
+      DB_USER: user
+      DB_PASSWORD: pass
+    volumes:
+      - ./backend/:/app
