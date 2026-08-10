@@ -1,12 +1,18 @@
 from flask import flash, redirect, request, render_template, session, url_for
 from datetime import datetime, date, timedelta
-from sqlalchemy import and_, func, select, or_, text
+from sqlalchemy import and_, func, select, or_
 from sqlalchemy.exc import IntegrityError
 from functools import wraps
 from uuid import uuid4
 
-from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm, OfficeForm, BoatForm
+from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm, OfficeForm, BoatForm, ClientRegistrationForm, SupervisesForm, MaintainsForm
 from boat_rental import app, db
+from boat_rental import assignments
+from boat_rental.assignments import (
+    detach_boat_links,
+    detach_manager_links,
+    detach_staff_links,
+)
 from boat_rental.generator import generate_data
 from boat_rental.models import (
     AVAILABILITY_AVAILABLE,
@@ -75,6 +81,62 @@ def index():
 def login():
     clients = Client.query.all()
     return render_template("login.html", clients=clients)
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register_client():
+    """Sign up a new client and sign them straight in.
+
+    Auto-login is safe here precisely because auth is passwordless: /login is a
+    picker over every client, so the next click would grant the same access
+    anyway. Without it a new user has to find their own name in an unsorted
+    list that grows with every registration.
+    """
+    if "client" in session:
+        return redirect(url_for("home"))
+
+    form = ClientRegistrationForm()
+    if form.validate_on_submit():
+        client_id = f"C{uuid4().hex[:8]}"
+        try:
+            client = Client(
+                ClientID=client_id,
+                FirstName=form.first_name.data.strip(),
+                LastName=form.last_name.data.strip(),
+                Street=form.street.data or None,
+                ZIP=form.zip.data or None,
+                Country=form.country.data or None,
+                City=form.city.data or None,
+                Birthdate=form.birthdate.data,
+                Email=form.email.data,
+                MobileNumber=form.mobile.data or None,
+                # CaptainLicenseNumber is UNIQUE, and the DB allows many NULLs
+                # but not many empty strings -- so a blank field must become
+                # None or the second licence-less signup fails.
+                CaptainLicenseNumber=(form.captain_license.data or "").strip() or None,
+            )
+            db.session.add(client)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("Unique constraint failed (Captain licence number must be unique).", "error")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {e}", "error")
+        else:
+            sign_in('client',
+                    {
+                        "ClientID":  client.ClientID,
+                        "FirstName": client.FirstName,
+                        "LastName":  client.LastName,
+                        "FullName":  client.full_name,
+                        "Email":     client.Email,
+                    }
+                )
+            flash(f"Welcome, {client.FirstName}! Your account is ready.", "success")
+            return redirect(url_for("home"))
+
+    return render_template("register.html", form=form)
 
 
 @app.route("/logout")
@@ -168,9 +230,71 @@ def report():
     rentals = (
         db.session.query(Rental)
         .filter(Rental.ClientID == session.get("client").get("ClientID"))
+        .order_by(Rental.RentalDate.desc())
         .all()
     )
-    return render_template("report.html", rentals=rentals)
+    return render_template(
+        "report.html",
+        rentals=rentals,
+        delete_form=ConfirmDeleteForm(),
+        today=date.today(),
+    )
+
+
+@app.route("/rentals/<boat_id>/<rental_date>/cancel", methods=["POST"])
+def cancel_rental(boat_id, rental_date):
+    """Cancel one of the signed-in client's own future rentals.
+
+    The composite PK is (ClientID, BoatID, RentalDate), but only two of the
+    three components travel in the URL -- ClientID is read from the session.
+    That means a client cannot address another client's row at all, so there
+    is no ownership check here to get wrong.
+    """
+    if "client" not in session:
+        return redirect(url_for("login"))
+
+    form = ConfirmDeleteForm()
+    if not form.validate_on_submit():
+        flash("Invalid cancellation request.", "error")
+        return redirect(url_for("report"))
+
+    try:
+        start = datetime.strptime(rental_date, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Invalid rental date.", "error")
+        return redirect(url_for("report"))
+
+    # filter_by rather than query.get((...)): the tuple form depends on the
+    # column order of the PrimaryKeyConstraint, and ClientID/BoatID are both
+    # VARCHAR(50), so a transposition would not raise -- it would just be wrong.
+    rental = Rental.query.filter_by(
+        ClientID=session["client"]["ClientID"], BoatID=boat_id, RentalDate=start
+    ).first()
+
+    if rental is None:
+        flash("That rental is not on your list.", "error")
+        return redirect(url_for("report"))
+
+    # Cancelling deletes the row outright, so a rental already under way would
+    # lose its history and free a boat that is physically out. The handover
+    # happens on RentalDate, so today counts as started. Booking already
+    # refuses past start dates, so no client can create a rental they are then
+    # unable to cancel. PaymentStatus is deliberately not a blocker: there is
+    # no refund model, and blocking PAID would strand paid future bookings.
+    if rental.RentalDate <= date.today():
+        flash("This rental has already started — contact the office to end it early.", "error")
+        return redirect(url_for("report"))
+
+    try:
+        db.session.delete(rental)
+        db.session.commit()
+        flash(f"Rental of boat {boat_id} cancelled.", "success")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to cancel rental %s/%s", boat_id, rental_date)
+        flash("Cancellation failed.", "error")
+
+    return redirect(url_for("report"))
 
 
 @app.route("/analytics")
@@ -196,11 +320,7 @@ def analytics():
     available_count = Boat.query.filter_by(
         AvailabilityStatus=AVAILABILITY_AVAILABLE
     ).count()
-    rentals_in_period = (
-        db.session.query(Rental)
-        .filter(rental_overlap_filter(start_date, end_date))
-        .count()
-    )
+    rentals_in_period = rentals_in_city(filtered_city, start_date, end_date)
     period_days = (end_date - start_date).days
 
     return render_template(
@@ -350,6 +470,23 @@ def rental_overlap_filter(start_date, end_date):
     return and_(
         Rental.RentalDate < end_date,
         or_(Rental.RentalEndDate.is_(None), Rental.RentalEndDate > start_date),
+    )
+
+
+def rentals_in_city(city, start_date, end_date):
+    """Count rentals in `city` overlapping [start_date, end_date).
+
+    Scoped through Boat -> Office because Rental has no city of its own. This
+    used to be an unjoined count over every Rental, which put a fleet-wide
+    number on /analytics next to figures that all respect the city filter.
+    """
+    return (
+        db.session.query(Rental)
+        .join(Boat, Rental.BoatID == Boat.BoatID)
+        .join(Office, Boat.OfficeID == Office.OfficeID)
+        .filter(Office.City == city)
+        .filter(rental_overlap_filter(start_date, end_date))
+        .count()
     )
 
 
@@ -596,29 +733,8 @@ def delete_employee(emp_id):
     return redirect(url_for("list_employees"))
 
 
-def detach_manager_links(emp_id):
-    """Clear the references that block removing a Manager row.
-
-    Supervises and Maintains have no SQLAlchemy models, so they are reached
-    with raw SQL — same approach as generator.generate_data().
-    """
-    db.session.execute(
-        text("UPDATE `Manager` SET `SupervisorID` = NULL WHERE `SupervisorID` = :id"),
-        {"id": emp_id},
-    )
-    db.session.execute(
-        text("DELETE FROM `Supervises` WHERE `ManagerID` = :id"), {"id": emp_id}
-    )
-
-
-def detach_staff_links(emp_id):
-    """Clear the references that block removing a Staff row."""
-    db.session.execute(
-        text("DELETE FROM `Supervises` WHERE `StaffID` = :id"), {"id": emp_id}
-    )
-    db.session.execute(
-        text("DELETE FROM `Maintains` WHERE `StaffID` = :id"), {"id": emp_id}
-    )
+# detach_manager_links / detach_staff_links / detach_boat_links now live in
+# boat_rental/assignments.py, next to the rest of the Supervises / Maintains SQL.
 
 
 
@@ -791,6 +907,36 @@ def office_choices():
     ]
 
 
+def staff_choices():
+    rows = (
+        db.session.query(Staff, Employee)
+        .join(Employee, Staff.StaffID == Employee.EmployeeID)
+        .order_by(Employee.LastName, Employee.FirstName)
+        .all()
+    )
+    return [(s.StaffID, f"{e.FirstName} {e.LastName} ({e.EmployeeID})") for s, e in rows]
+
+
+def manager_choices():
+    rows = (
+        db.session.query(Manager, Employee)
+        .join(Employee, Manager.ManagerID == Employee.EmployeeID)
+        .order_by(Employee.LastName, Employee.FirstName)
+        .all()
+    )
+    return [(m.ManagerID, f"{e.FirstName} {e.LastName} ({e.EmployeeID})") for m, e in rows]
+
+
+def boat_choices():
+    rows = (
+        db.session.query(Boat, Office)
+        .join(Office, Boat.OfficeID == Office.OfficeID)
+        .order_by(Office.City, Boat.BoatID)
+        .all()
+    )
+    return [(b.BoatID, f"{b.BoatID} — {b.Manufacturer} ({o.City})") for b, o in rows]
+
+
 @app.route("/manager/boats")
 @manager_required
 def list_boats():
@@ -919,9 +1065,7 @@ def delete_boat(boat_id):
         return redirect(url_for("list_boats"))
 
     try:
-        db.session.execute(
-            text("DELETE FROM `Maintains` WHERE `BoatID` = :id"), {"id": boat_id}
-        )
+        detach_boat_links(boat_id)
         for model, pk in BOAT_SUBCLASSES.values():
             db.session.query(model).filter(getattr(model, pk) == boat_id).delete()
         db.session.delete(boat)
@@ -936,3 +1080,118 @@ def delete_boat(boat_id):
         flash("Delete failed.", "error")
 
     return redirect(url_for("list_boats"))
+
+
+# =========================
+# Assignments (the two m:n relations)
+# =========================
+# Supervises and Maintains are filled by the generator but were never readable
+# or editable in the app, so both relationships from the ER model dead-ended in
+# the seed data. All the SQL lives in boat_rental/assignments.py.
+
+@app.route("/manager/assignments/supervision", methods=["GET", "POST"])
+@manager_required
+def supervision_assignments():
+    form = SupervisesForm()
+    form.manager_id.choices = manager_choices()
+    form.staff_id.choices = staff_choices()
+
+    if not form.staff_id.choices:
+        # Render the list anyway -- redirecting would make the page unreachable
+        # while existing rows are still worth looking at.
+        flash("Hire a staff member first — only staff can be supervised.", "warning")
+    elif form.validate_on_submit():
+        try:
+            assignments.add_supervises(form.manager_id.data, form.staff_id.data)
+            db.session.commit()
+            flash("Supervision assigned.", "success")
+            return redirect(url_for("supervision_assignments"))
+        except IntegrityError:
+            db.session.rollback()
+            flash("That manager already supervises that staff member.", "error")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {e}", "error")
+
+    return render_template(
+        "assignments_supervision.html",
+        form=form,
+        rows=assignments.list_supervises(),
+        delete_form=ConfirmDeleteForm(),
+    )
+
+
+@app.route("/manager/assignments/supervision/<manager_id>/<staff_id>/delete", methods=["POST"])
+@manager_required
+def unassign_supervision(manager_id, staff_id):
+    form = ConfirmDeleteForm()
+    if not form.validate_on_submit():
+        flash("Invalid delete request.", "error")
+        return redirect(url_for("supervision_assignments"))
+
+    try:
+        removed = assignments.remove_supervises(manager_id, staff_id)
+        db.session.commit()
+        if removed:
+            flash("Supervision removed.", "success")
+        else:
+            flash("That assignment no longer exists.", "warning")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to unassign supervision %s/%s", manager_id, staff_id)
+        flash("Delete failed.", "error")
+
+    return redirect(url_for("supervision_assignments"))
+
+
+@app.route("/manager/assignments/maintenance", methods=["GET", "POST"])
+@manager_required
+def maintenance_assignments():
+    form = MaintainsForm()
+    form.staff_id.choices = staff_choices()
+    form.boat_id.choices = boat_choices()
+
+    if not (form.staff_id.choices and form.boat_id.choices):
+        flash("Maintenance needs at least one staff member and one boat.", "warning")
+    elif form.validate_on_submit():
+        try:
+            assignments.add_maintains(form.staff_id.data, form.boat_id.data)
+            db.session.commit()
+            flash("Boat assigned for maintenance.", "success")
+            return redirect(url_for("maintenance_assignments"))
+        except IntegrityError:
+            db.session.rollback()
+            flash("That staff member already maintains that boat.", "error")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {e}", "error")
+
+    return render_template(
+        "assignments_maintenance.html",
+        form=form,
+        rows=assignments.list_maintains(),
+        delete_form=ConfirmDeleteForm(),
+    )
+
+
+@app.route("/manager/assignments/maintenance/<staff_id>/<boat_id>/delete", methods=["POST"])
+@manager_required
+def unassign_maintenance(staff_id, boat_id):
+    form = ConfirmDeleteForm()
+    if not form.validate_on_submit():
+        flash("Invalid delete request.", "error")
+        return redirect(url_for("maintenance_assignments"))
+
+    try:
+        removed = assignments.remove_maintains(staff_id, boat_id)
+        db.session.commit()
+        if removed:
+            flash("Maintenance assignment removed.", "success")
+        else:
+            flash("That assignment no longer exists.", "warning")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to unassign maintenance %s/%s", staff_id, boat_id)
+        flash("Delete failed.", "error")
+
+    return redirect(url_for("maintenance_assignments"))

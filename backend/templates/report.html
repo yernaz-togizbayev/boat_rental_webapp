@@ -13,6 +13,7 @@
                 <th>End Date</th>
                 <th>Payment Status</th>
                 <th>Duration (Days)</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -27,6 +28,18 @@
                     </span>
                 </td>
                 <td>{{ rental.rental_days }}</td>
+                <td>
+                    {% if rental.RentalDate > today %}
+                    <form method="post" style="display:inline"
+                          action="{{ url_for('cancel_rental', boat_id=rental.BoatID, rental_date=rental.RentalDate.strftime('%Y-%m-%d')) }}"
+                          onsubmit="return confirm('Cancel the rental of boat {{ rental.BoatID }}?')">
+                        {{ delete_form.hidden_tag() }}
+                        <button class="btn btn-sm btn-outline-danger">Cancel</button>
+                    </form>
+                    {% else %}
+                    <span class="text-muted">Started</span>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>

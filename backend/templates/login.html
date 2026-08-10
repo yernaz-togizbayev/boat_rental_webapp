@@ -3,6 +3,8 @@
 {% block body %}
 <div class="content-section">
 <h2>Select a client to continue!</h2>
+<p class="text-muted">New here? <a href="{{ url_for('register_client') }}">Create an account</a>.</p>
+{% if clients %}
 <ul>
   {% for c in clients %}
     <li class="list-group-item">
@@ -12,5 +14,11 @@
     </li>
   {% endfor %}
 </ul>
+{% else %}
+<div class="alert alert-info">
+  No clients yet. <a href="{{ url_for('register_client') }}">Register the first one</a>,
+  or generate the demo data.
+</div>
+{% endif %}
 </div>
 {% endblock %}

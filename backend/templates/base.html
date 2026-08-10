@@ -30,6 +30,8 @@
                 <a class="nav-item nav-link" href="{{ url_for('hire_employee') }}">Hire</a>
                 <a class="nav-item nav-link" href="{{ url_for('list_offices') }}">Cities</a>
                 <a class="nav-item nav-link" href="{{ url_for('list_boats') }}">Boats</a>
+                <a class="nav-item nav-link" href="{{ url_for('supervision_assignments') }}">Supervision</a>
+                <a class="nav-item nav-link" href="{{ url_for('maintenance_assignments') }}">Maintenance</a>
               {% elif session.client %}
                 <a class="nav-item nav-link" href="{{ url_for('booking') }}">Book Rental</a>
                 <a class="nav-item nav-link" href="{{ url_for('report') }}">My Rentals</a>
@@ -52,6 +54,7 @@
                 <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
               {% else %}
                 <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
+                <a class="nav-item nav-link" href="{{ url_for('register_client') }}">Register</a>
                 <a class="nav-item nav-link" href="{{ url_for('manager_login') }}">Manager Login</a>
               {% endif %}
             </div>

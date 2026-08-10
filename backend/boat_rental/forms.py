@@ -82,12 +82,25 @@ def _describe_boat(boat):
 # Manager & Employee forms
 # =========================
 MIN_EMPLOYEE_AGE = 18
+MIN_CLIENT_AGE = 18
 
-def validate_min_age(form, field):
-    if field.data:
-        age = date.today().year - field.data.year - ((date.today().month, date.today().day) < (field.data.month, field.data.day))
-        if age < MIN_EMPLOYEE_AGE:
-            raise ValidationError(f"Employee must be at least {MIN_EMPLOYEE_AGE} years old.")
+def min_age(years, subject):
+    """Validator factory: `subject` must be at least `years` old.
+
+    A factory rather than a plain function so clients and employees can share
+    the arithmetic without the error message calling a client an "Employee".
+    """
+    def _validate(form, field):
+        if field.data:
+            today = date.today()
+            age = today.year - field.data.year - ((today.month, today.day) < (field.data.month, field.data.day))
+            if age < years:
+                raise ValidationError(f"{subject} must be at least {years} years old.")
+    return _validate
+
+# The employee forms below refer to this name; keeping it means their
+# validators lists and their error text are unchanged.
+validate_min_age = min_age(MIN_EMPLOYEE_AGE, "Employee")
 
 class ManagerLoginForm(FlaskForm):
     manager_id = SelectField("Select manager", validators=[DataRequired()])
@@ -147,12 +160,50 @@ class EmployeeEditForm(FlaskForm):
 class ConfirmDeleteForm(FlaskForm):
     submit = SubmitField("Delete")
 
+class ClientRegistrationForm(FlaskForm):
+    # Required fields mirror the NOT NULL columns on Client; everything else
+    # is Optional() and written as NULL when blank.
+    first_name = StringField("First name", validators=[DataRequired(), Length(max=50)])
+    last_name = StringField("Last name", validators=[DataRequired(), Length(max=50)])
+    street = StringField("Street", validators=[Optional(), Length(max=100)])
+    zip = StringField("ZIP", validators=[Optional(), Length(max=10)])
+    country = StringField("Country", validators=[Optional(), Length(max=50)])
+    city = StringField("City", validators=[Optional(), Length(max=50)])
+    birthdate = DateField(
+        "Birthdate",
+        format="%Y-%m-%d",
+        validators=[DataRequired(), min_age(MIN_CLIENT_AGE, "Client")],
+        render_kw={"type": "date"},
+    )
+    email = EmailField("Email", validators=[DataRequired(), Email(), Length(max=100)])
+    mobile = StringField("Mobile number", validators=[Optional(), Length(max=20)])
+    captain_license = StringField(
+        "Captain licence number (optional)", validators=[Optional(), Length(max=50)]
+    )
+    submit = SubmitField("Create account")
+
+
 class OfficeForm(FlaskForm):
     city = StringField("City", validators=[DataRequired(), Length(max=50)])
     country = StringField("Country", validators=[DataRequired(), Length(max=50)])
     street = StringField("Street", validators=[DataRequired(), Length(max=100)])
     zip = StringField("ZIP", validators=[DataRequired(), Length(max=10)])
     submit = SubmitField("Save office")
+
+
+# The m:n relations from the ER model. Choices are filled in by the route, so
+# SelectField.pre_validate is what rejects a POST naming, say, a manager in the
+# staff slot -- the check happens before anything reaches SQL.
+class SupervisesForm(FlaskForm):
+    manager_id = SelectField("Manager", validators=[DataRequired()], coerce=str)
+    staff_id = SelectField("Staff member", validators=[DataRequired()], coerce=str)
+    submit = SubmitField("Assign supervision")
+
+
+class MaintainsForm(FlaskForm):
+    staff_id = SelectField("Staff member", validators=[DataRequired()], coerce=str)
+    boat_id = SelectField("Boat", validators=[DataRequired()], coerce=str)
+    submit = SubmitField("Assign boat")
 
 
 BOAT_TYPES = [("yacht", "Yacht"), ("motorboat", "Motorboat"), ("catamaran", "Catamaran")]

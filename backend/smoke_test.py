@@ -10,6 +10,7 @@ exercised here — those need `docker compose up`.
 """
 
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -137,6 +138,12 @@ def search(c, city, start=START, end=END):
     }, follow_redirects=True)
 
 
+def rentals_card(body):
+    """Read the 'Rentals in <city>' figure off an /analytics page."""
+    match = re.search(r'id="rentals-in-period"[^>]*>\s*(\d+)', body)
+    return int(match.group(1)) if match else -1
+
+
 def book(c, boat_id, city="Dubrovnik", start=START, end=END):
     return c.post("/booking", data={
         "boat_id": boat_id,
@@ -220,6 +227,31 @@ def main():
             check("analytics no longer defaults to the stale 2025 window",
                   "2025-07-01" not in r2.get_data(as_text=True))
 
+        # 7b. The "Rentals in <city>" card must follow the city filter. It used
+        #     to be an unjoined count over every Rental, so it showed the same
+        #     fleet-wide number whatever city was selected.
+        db.session.add(Rental(ClientID="C2", BoatID="B3", RentalDate=START,
+                              RentalEndDate=END, PaymentStatus="PAID"))
+        db.session.commit()
+        with app.test_client() as c:
+            as_client(c, "C1")
+
+            def card(city):
+                body = c.get(
+                    f"/analytics?city={city}&start_date={START}&end_date={END}"
+                ).get_data(as_text=True)
+                return rentals_card(body)
+
+            # C1 rents B1 in Dubrovnik; C2 now rents B3 in Mykonos.
+            check("analytics rental count excludes other cities", card("Dubrovnik") == 1,
+                  f"got {card('Dubrovnik')}")
+            check("analytics rental count follows the city filter", card("Mykonos") == 1,
+                  f"got {card('Mykonos')}")
+            # Nice has only a maintenance boat and no rentals at all, so a
+            # non-zero here would mean the join is not filtering.
+            check("analytics counts nothing in a city with no rentals", card("Nice") == 0,
+                  f"got {card('Nice')}")
+
         # 8. GET search links work (this branch was dead: it read request.form)
         with app.test_client() as c:
             as_client(c, "C1")
@@ -227,6 +259,82 @@ def main():
                 f"/booking?city=Dubrovnik&start_date={START}&end_date={END}"
             ).get_data(as_text=True)
             check("bookmarkable GET search returns results", "Available Boats in" in body)
+
+        # 8b. The two m:n relations are editable from the manager UI. Must run
+        #     before section 9 deletes M2 and section 11 turns S1 into a manager.
+        def count_supervises(manager_id, staff_id):
+            return db.session.execute(
+                text("SELECT COUNT(*) FROM Supervises WHERE ManagerID = :m AND StaffID = :s"),
+                {"m": manager_id, "s": staff_id},
+            ).scalar()
+
+        def count_maintains(staff_id, boat_id):
+            return db.session.execute(
+                text("SELECT COUNT(*) FROM Maintains WHERE StaffID = :s AND BoatID = :b"),
+                {"s": staff_id, "b": boat_id},
+            ).scalar()
+
+        with app.test_client() as c:
+            as_manager(c, "M1")
+
+            body = c.get("/manager/assignments/supervision").get_data(as_text=True)
+            check("supervision page lists the seeded pair",
+                  "M2" in body and "S1" in body, body[:300])
+
+            body = c.post("/manager/assignments/supervision", data={
+                "manager_id": "M1", "staff_id": "S1", "submit": "Assign supervision",
+            }, follow_redirects=True).get_data(as_text=True)
+            check("a manager can assign supervision", count_supervises("M1", "S1") == 1, body[:300])
+
+            body = c.post("/manager/assignments/supervision", data={
+                "manager_id": "M1", "staff_id": "S1", "submit": "Assign supervision",
+            }, follow_redirects=True).get_data(as_text=True)
+            check("a duplicate supervision is refused", "already supervises" in body, body[:300])
+            check("no second supervision row", count_supervises("M1", "S1") == 1)
+
+            # M2 is a manager, not staff. SelectField.pre_validate must reject
+            # this before it ever reaches the INSERT.
+            c.post("/manager/assignments/supervision", data={
+                "manager_id": "M1", "staff_id": "M2", "submit": "Assign supervision",
+            }, follow_redirects=True)
+            check("a manager cannot be assigned into the staff slot",
+                  count_supervises("M1", "M2") == 0)
+
+            body = c.post("/manager/assignments/supervision/M1/S1/delete",
+                          follow_redirects=True).get_data(as_text=True)
+            check("supervision can be unassigned", "Supervision removed" in body, body[:300])
+            check("the supervision row is gone", count_supervises("M1", "S1") == 0)
+
+            body = c.post("/manager/assignments/supervision/M1/S1/delete",
+                          follow_redirects=True).get_data(as_text=True)
+            check("unassigning a missing supervision does not 500",
+                  "no longer exists" in body, body[:300])
+
+            # Same shape for Maintains. S1 already maintains B1 from the seed.
+            body = c.get("/manager/assignments/maintenance").get_data(as_text=True)
+            check("maintenance page lists the seeded pair", "B1" in body, body[:300])
+
+            c.post("/manager/assignments/maintenance", data={
+                "staff_id": "S1", "boat_id": "B2", "submit": "Assign boat",
+            }, follow_redirects=True)
+            check("a manager can assign maintenance", count_maintains("S1", "B2") == 1)
+
+            body = c.post("/manager/assignments/maintenance", data={
+                "staff_id": "S1", "boat_id": "B2", "submit": "Assign boat",
+            }, follow_redirects=True).get_data(as_text=True)
+            check("a duplicate maintenance assignment is refused",
+                  "already maintains" in body, body[:300])
+
+            body = c.post("/manager/assignments/maintenance/S1/B2/delete",
+                          follow_redirects=True).get_data(as_text=True)
+            check("maintenance can be unassigned",
+                  "Maintenance assignment removed" in body, body[:300])
+            check("the maintenance row is gone", count_maintains("S1", "B2") == 0)
+
+        with app.test_client() as c:
+            r = c.get("/manager/assignments/supervision")
+            check("assignments pages are manager-only", r.status_code == 302,
+                  f"status {r.status_code}")
 
         # 9. Manager deleting a supervisor -> used to fail on FK constraints
         with app.test_client() as c:
@@ -357,7 +465,130 @@ def main():
             check("an empty city can be deleted",
                   Office.query.filter_by(City="Zadar").first() is None)
 
-        # 14. generate-data is open to anonymous visitors, but only once per session
+        # 13b. A client can cancel a future rental, and only their own.
+        far_start = date.today() + timedelta(days=60)
+        far_end = far_start + timedelta(days=2)
+        with app.test_client() as c:
+            as_client(c, "C1")
+            search(c, "Dubrovnik", far_start, far_end)
+            book(c, "B4", start=far_start, end=far_end)
+            check("a far-future rental was booked",
+                  Rental.query.filter_by(BoatID="B4", ClientID="C1").count() == 1)
+
+            body = c.get("/report").get_data(as_text=True)
+            check("report offers a cancel button for a future rental", "/cancel" in body)
+
+            body = c.post(f"/rentals/B4/{far_start.isoformat()}/cancel",
+                          follow_redirects=True).get_data(as_text=True)
+            check("a client can cancel a future rental", "cancelled" in body, body[:300])
+            check("the cancelled rental is gone",
+                  Rental.query.filter_by(BoatID="B4", ClientID="C1").count() == 0)
+
+            # C2 booked B1 for END+10 back in section 6. C1 must not reach it,
+            # which is the whole point of taking ClientID from the session.
+            c2_start = END + timedelta(days=10)
+            body = c.post(f"/rentals/B1/{c2_start.isoformat()}/cancel",
+                          follow_redirects=True).get_data(as_text=True)
+            check("a client cannot cancel another client's rental",
+                  "not on your list" in body, body[:300])
+            check("the other client's rental survived",
+                  Rental.query.filter_by(ClientID="C2", BoatID="B1",
+                                         RentalDate=c2_start).count() == 1)
+
+            # Booking refuses past start dates, so this row can only be made
+            # directly -- but the guard still has to hold.
+            past = date.today() - timedelta(days=2)
+            db.session.add(Rental(ClientID="C1", BoatID="B4", RentalDate=past,
+                                  RentalEndDate=date.today() + timedelta(days=1),
+                                  PaymentStatus="PAID"))
+            db.session.commit()
+            body = c.post(f"/rentals/B4/{past.isoformat()}/cancel",
+                          follow_redirects=True).get_data(as_text=True)
+            check("a started rental cannot be cancelled",
+                  "already started" in body, body[:300])
+            check("the started rental survived",
+                  Rental.query.filter_by(BoatID="B4", RentalDate=past).count() == 1)
+
+            r = c.post("/rentals/B1/banana/cancel", follow_redirects=True)
+            check("an unparseable cancel date does not 500", r.status_code == 200,
+                  f"status {r.status_code}")
+            check("an unparseable cancel date is reported",
+                  "Invalid rental date" in r.get_data(as_text=True))
+
+        with app.test_client() as c:
+            r = c.post(f"/rentals/B4/{past.isoformat()}/cancel")
+            check("an anonymous visitor cannot cancel", r.status_code == 302,
+                  f"status {r.status_code}")
+            check("the rental survived the anonymous cancel",
+                  Rental.query.filter_by(BoatID="B4", RentalDate=past).count() == 1)
+
+        # 14. Client self-registration. Runs before the generate-data section,
+        #     which deletes every client.
+        def registration(**overrides):
+            payload = {
+                "first_name": "Nina", "last_name": "Novak",
+                "street": "Ilica 1", "zip": "10000", "city": "Zagreb", "country": "Croatia",
+                "birthdate": "1995-06-15", "email": "nina@example.com",
+                "mobile": "+385 1 234", "captain_license": "CAPT-555001",
+                "submit": "Create account",
+            }
+            payload.update(overrides)
+            return payload
+
+        before = Client.query.count()
+        with app.test_client() as c:
+            body = c.post("/register", data=registration(),
+                          follow_redirects=True).get_data(as_text=True)
+            check("a new client can register", "Welcome, Nina" in body, body[:300])
+            check("client row was written", Client.query.count() == before + 1)
+            # Landing on /report at all proves registration signed them in.
+            check("registration signs the new client in",
+                  c.get("/report").status_code == 200)
+
+            # The real point: the new ClientID has to satisfy the Rental FK.
+            search(c, "Dubrovnik")
+            body = book(c, "B4").get_data(as_text=True)
+            nina = Client.query.filter_by(Email="nina@example.com").first()
+            check("a freshly registered client can book",
+                  Rental.query.filter_by(ClientID=nina.ClientID).count() == 1, body[:300])
+
+            # Already signed in -> no duplicate account on a refresh.
+            c.post("/register", data=registration(email="nina2@example.com",
+                                                  captain_license="CAPT-555002"),
+                   follow_redirects=True)
+            check("a signed-in client cannot register again",
+                  Client.query.count() == before + 1)
+
+        with app.test_client() as c:
+            body = c.post("/register", data=registration(email="other@example.com"),
+                          follow_redirects=True).get_data(as_text=True)
+            check("duplicate captain licence is refused", "must be unique" in body, body[:300])
+            check("no client row after the refused registration",
+                  Client.query.count() == before + 1)
+
+        # A blank licence must be stored as NULL, not "": the column is UNIQUE,
+        # and two empty strings would collide where two NULLs do not.
+        for i, email in enumerate(("noline1@example.com", "noline2@example.com")):
+            with app.test_client() as c:
+                c.post("/register", data=registration(email=email, captain_license=""),
+                       follow_redirects=True)
+        check("two clients can register without a captain licence",
+              Client.query.filter_by(CaptainLicenseNumber=None).count() >= 2)
+
+        with app.test_client() as c:
+            body = c.post("/register", data=registration(
+                email="kid@example.com", captain_license="",
+                birthdate=(date.today() - timedelta(days=365 * 10)).isoformat(),
+            ), follow_redirects=True).get_data(as_text=True)
+            check("an underage client is refused", "at least 18" in body, body[:300])
+            check("no client row after the underage registration",
+                  Client.query.filter_by(Email="kid@example.com").first() is None)
+
+        with app.test_client() as c:
+            body = c.get("/login").get_data(as_text=True)
+            check("login page links to registration", "Create an account" in body)
+
+        # 15. generate-data is open to anonymous visitors, but only once per session
         with app.test_client() as c:
             body = c.post("/generate-data", follow_redirects=True).get_data(as_text=True)
             check("anonymous can generate data", "Demo data generated" in body, body[:300])
@@ -378,7 +609,7 @@ def main():
             check("button stays hidden after a manager login/logout",
                   "Generate demo data" not in body, body[:300])
 
-        # 15. The Generate Data reset runs cleanly and fills the m:n tables
+        # 16. The Generate Data reset runs cleanly and fills the m:n tables
         with app.app_context():
             from boat_rental.generator import generate_data
             try:

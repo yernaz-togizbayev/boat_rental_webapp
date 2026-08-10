@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="content-section">
+  <h2>Maintenance</h2>
+  <p class="text-muted">Which staff member maintains which boat.</p>
+
+  {% if form.errors %}
+    <div class="alert alert-danger">
+      <ul class="mb-0">
+        {% for field, errors in form.errors.items() %}
+          {% for err in errors %}
+            <li>{{ form[field].label.text if field in form else field }}: {{ err }}</li>
+          {% endfor %}
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form method="post" class="row g-3 mb-4">
+    {{ form.hidden_tag() }}
+    <div class="col-md-5">{{ form.staff_id.label(class="form-label") }} {{ form.staff_id(class="form-select") }}</div>
+    <div class="col-md-5">{{ form.boat_id.label(class="form-label") }} {{ form.boat_id(class="form-select") }}</div>
+    <div class="col-md-2 d-flex align-items-end">{{ form.submit(class="btn btn-success w-100") }}</div>
+  </form>
+
+  {% if rows %}
+  <div class="table-responsive">
+    <table class="table table-striped table-sm align-middle">
+      <thead>
+        <tr><th>Staff member</th><th>Boat</th><th>City</th><th style="width:120px">Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.StaffFirst }} {{ r.StaffLast }} ({{ r.StaffID }})</td>
+          <td>{{ r.BoatID }} — {{ r.Manufacturer }}</td>
+          <td>{{ r.City }}</td>
+          <td>
+            <form method="post" style="display:inline"
+                  action="{{ url_for('unassign_maintenance', staff_id=r.StaffID, boat_id=r.BoatID) }}"
+                  onsubmit="return confirm('Remove this maintenance assignment?')">
+              {{ delete_form.hidden_tag() }}
+              <button class="btn btn-sm btn-outline-danger">Unassign</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="alert alert-info">No maintenance assignments yet.</div>
+  {% endif %}
+</div>
+{% endblock %}
