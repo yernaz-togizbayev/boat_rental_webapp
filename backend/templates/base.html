@@ -28,6 +28,8 @@
               {% if session.manager %}
                 <a class="nav-item nav-link" href="{{ url_for('list_employees') }}">Employee list</a>
                 <a class="nav-item nav-link" href="{{ url_for('hire_employee') }}">Hire</a>
+                <a class="nav-item nav-link" href="{{ url_for('list_offices') }}">Cities</a>
+                <a class="nav-item nav-link" href="{{ url_for('list_boats') }}">Boats</a>
               {% elif session.client %}
                 <a class="nav-item nav-link" href="{{ url_for('booking') }}">Book Rental</a>
                 <a class="nav-item nav-link" href="{{ url_for('report') }}">My Rentals</a>

@@ -28,12 +28,14 @@ from boat_rental.models import (  # noqa: E402
     AVAILABILITY_AVAILABLE,
     AVAILABILITY_MAINTENANCE,
     Boat,
+    Catamaran,
     Client,
     Employee,
     Manager,
     Office,
     Rental,
     Staff,
+    Yacht,
 )
 
 app.config["WTF_CSRF_ENABLED"] = False
@@ -267,7 +269,95 @@ def main():
             check("logout clears the manager session", r.status_code == 302,
                   f"status {r.status_code}")
 
-        # 13. generate-data is open to anonymous visitors, but only once per session
+        # 13. A manager can add a city, stock it with a boat, and a client can
+        #     then book there. This is the whole point of the office/boat CRUD,
+        #     so it is tested as one chain rather than as isolated routes.
+        with app.test_client() as c:
+            as_manager(c, "M1")
+            body = c.post("/manager/offices/new", data={
+                "city": "Split", "country": "Croatia",
+                "street": "Riva 5", "zip": "21000", "submit": "Save office",
+            }, follow_redirects=True).get_data(as_text=True)
+            check("manager can add a city", "Split added" in body, body[:300])
+
+        split = Office.query.filter_by(City="Split").first()
+        check("new office row was written", split is not None)
+
+        with app.test_client() as c:
+            as_client(c, "C1")
+            body = c.get("/booking").get_data(as_text=True)
+            check("new city shows up in the booking search", "Split" in body, body[:300])
+            body = search(c, "Split").get_data(as_text=True)
+            check("new city has no boats yet", "no boats" in body.lower(), body[:300])
+
+        with app.test_client() as c:
+            as_manager(c, "M1")
+            body = c.post("/manager/boats/new", data={
+                "office_id": split.OfficeID, "manufacturer": "Lagoon",
+                "seats": "8", "length": "13.5", "weight": "1200", "horsepower": "150",
+                "availability_status": AVAILABILITY_AVAILABLE,
+                "boat_type": "catamaran", "nr_of_cabins": "4", "max_capacity": "10",
+                "submit": "Save boat",
+            }, follow_redirects=True).get_data(as_text=True)
+            check("manager can add a boat", "added" in body, body[:300])
+
+        new_boat_row = Boat.query.filter_by(OfficeID=split.OfficeID).first()
+        check("boat row was written", new_boat_row is not None)
+        check("catamaran subclass row was written",
+              Catamaran.query.get(new_boat_row.BoatID) is not None)
+
+        with app.test_client() as c:
+            as_client(c, "C1")
+            body = search(c, "Split").get_data(as_text=True)
+            check("new boat is offered in the new city",
+                  new_boat_row.BoatID in body, body[:300])
+            body = book(c, new_boat_row.BoatID, city="Split").get_data(as_text=True)
+            check("client can book a boat in the new city",
+                  Rental.query.filter_by(BoatID=new_boat_row.BoatID).count() == 1,
+                  body[:300])
+
+        # Switching subclass moves the row between tables, like a staff/manager
+        # role change does.
+        with app.test_client() as c:
+            as_manager(c, "M1")
+            c.post(f"/manager/boats/{new_boat_row.BoatID}/edit", data={
+                "office_id": split.OfficeID, "manufacturer": "Lagoon",
+                "seats": "8", "length": "13.5", "weight": "1200", "horsepower": "150",
+                "availability_status": AVAILABILITY_AVAILABLE,
+                "boat_type": "yacht", "yacht_name": "Sea Star", "has_jacuzzi": "y",
+                "submit": "Save boat",
+            }, follow_redirects=True)
+        check("old subclass row removed on type change",
+              Catamaran.query.get(new_boat_row.BoatID) is None)
+        check("new subclass row created on type change",
+              Yacht.query.get(new_boat_row.BoatID) is not None)
+
+        # Delete guards: neither of these may take referenced rows with them.
+        with app.test_client() as c:
+            as_manager(c, "M1")
+            body = c.post(f"/manager/boats/{new_boat_row.BoatID}/delete",
+                          follow_redirects=True).get_data(as_text=True)
+            check("deleting a boat with rentals is refused",
+                  "rental(s) on record" in body, body[:300])
+            check("boat survived the refused delete",
+                  Boat.query.get(new_boat_row.BoatID) is not None)
+
+            body = c.post(f"/manager/offices/{split.OfficeID}/delete",
+                          follow_redirects=True).get_data(as_text=True)
+            check("deleting a city that still has boats is refused",
+                  "Cannot delete Split" in body, body[:300])
+
+            # An empty city deletes cleanly.
+            c.post("/manager/offices/new", data={
+                "city": "Zadar", "country": "Croatia",
+                "street": "Obala 1", "zip": "23000", "submit": "Save office",
+            }, follow_redirects=True)
+            zadar = Office.query.filter_by(City="Zadar").first()
+            c.post(f"/manager/offices/{zadar.OfficeID}/delete", follow_redirects=True)
+            check("an empty city can be deleted",
+                  Office.query.filter_by(City="Zadar").first() is None)
+
+        # 14. generate-data is open to anonymous visitors, but only once per session
         with app.test_client() as c:
             body = c.post("/generate-data", follow_redirects=True).get_data(as_text=True)
             check("anonymous can generate data", "Demo data generated" in body, body[:300])
@@ -288,7 +378,7 @@ def main():
             check("button stays hidden after a manager login/logout",
                   "Generate demo data" not in body, body[:300])
 
-        # 14. The Generate Data reset runs cleanly and fills the m:n tables
+        # 15. The Generate Data reset runs cleanly and fills the m:n tables
         with app.app_context():
             from boat_rental.generator import generate_data
             try:

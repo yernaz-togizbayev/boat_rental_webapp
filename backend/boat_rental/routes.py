@@ -1,11 +1,11 @@
 from flask import flash, redirect, request, render_template, session, url_for
 from datetime import datetime, date, timedelta
-from sqlalchemy import and_, select, or_, text
+from sqlalchemy import and_, func, select, or_, text
 from sqlalchemy.exc import IntegrityError
 from functools import wraps
 from uuid import uuid4
 
-from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm
+from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm, OfficeForm, BoatForm
 from boat_rental import app, db
 from boat_rental.generator import generate_data
 from boat_rental.models import (
@@ -16,7 +16,10 @@ from boat_rental.models import (
     Rental,
     Employee,
     Staff,
-    Manager
+    Manager,
+    Yacht,
+    Motorboat,
+    Catamaran
 )
 
 # Role session helpers
@@ -616,3 +619,320 @@ def detach_staff_links(emp_id):
     db.session.execute(
         text("DELETE FROM `Maintains` WHERE `StaffID` = :id"), {"id": emp_id}
     )
+
+
+
+@app.route("/manager/offices")
+@manager_required
+def list_offices():
+    offices = Office.query.order_by(Office.City).all()
+    boat_counts = dict(
+        db.session.query(Boat.OfficeID, func.count(Boat.BoatID))
+        .group_by(Boat.OfficeID)
+        .all()
+    )
+    employee_counts = dict(
+        db.session.query(Employee.OfficeID, func.count(Employee.EmployeeID))
+        .group_by(Employee.OfficeID)
+        .all()
+    )
+    return render_template(
+        "offices_list.html",
+        offices=offices,
+        boat_counts=boat_counts,
+        employee_counts=employee_counts,
+        delete_form=ConfirmDeleteForm(),
+    )
+
+
+@app.route("/manager/offices/new", methods=["GET", "POST"])
+@manager_required
+def new_office():
+    form = OfficeForm()
+    if form.validate_on_submit():
+        try:
+            office = Office(
+                OfficeID=f"O{uuid4().hex[:8]}",
+                City=form.city.data.strip(),
+                Country=form.country.data.strip(),
+                Street=form.street.data.strip(),
+                ZIP=form.zip.data.strip(),
+            )
+            db.session.add(office)
+            db.session.commit()
+            flash(f"{office.City} added. Add boats there to make it bookable.", "success")
+            return redirect(url_for("list_offices"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {e}", "error")
+    return render_template("office_form.html", form=form, office=None)
+
+
+@app.route("/manager/offices/<office_id>/edit", methods=["GET", "POST"])
+@manager_required
+def edit_office(office_id):
+    office = Office.query.get_or_404(office_id)
+    form = OfficeForm()
+
+    if request.method == "GET":
+        form.city.data = office.City
+        form.country.data = office.Country
+        form.street.data = office.Street
+        form.zip.data = office.ZIP
+
+    if form.validate_on_submit():
+        try:
+            office.City = form.city.data.strip()
+            office.Country = form.country.data.strip()
+            office.Street = form.street.data.strip()
+            office.ZIP = form.zip.data.strip()
+            db.session.commit()
+            flash("Office updated.", "success")
+            return redirect(url_for("list_offices"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {e}", "error")
+
+    return render_template("office_form.html", form=form, office=office)
+
+
+@app.route("/manager/offices/<office_id>/delete", methods=["POST"])
+@manager_required
+def delete_office(office_id):
+    form = ConfirmDeleteForm()
+    if not form.validate_on_submit():
+        flash("Invalid delete request.", "error")
+        return redirect(url_for("list_offices"))
+
+    office = Office.query.get_or_404(office_id)
+
+    boats = Boat.query.filter_by(OfficeID=office_id).count()
+    employees = Employee.query.filter_by(OfficeID=office_id).count()
+    if boats or employees:
+        flash(
+            f"Cannot delete {office.City}: {boats} boat(s) and {employees} employee(s) "
+            "are still assigned to it. Move or delete those first.",
+            "error",
+        )
+        return redirect(url_for("list_offices"))
+
+    try:
+        db.session.delete(office)
+        db.session.commit()
+        flash(f"{office.City} deleted.", "success")
+    except IntegrityError:
+        db.session.rollback()
+        flash("Cannot delete this office — other records still reference it.", "error")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to delete office %s", office_id)
+        flash("Delete failed.", "error")
+
+    return redirect(url_for("list_offices"))
+
+
+BOAT_SUBCLASSES = {
+    "yacht":     (Yacht,     "YachtID"),
+    "motorboat": (Motorboat, "MotorboatID"),
+    "catamaran": (Catamaran, "CatamaranID"),
+}
+
+
+def boat_type_of(boat_id):
+    """Return the subclass key for a boat, or None if it has no subclass row."""
+    for key, (model, pk) in BOAT_SUBCLASSES.items():
+        if db.session.query(model).filter(getattr(model, pk) == boat_id).first():
+            return key
+    return None
+
+
+def write_boat_subclass(boat_id, form, previous_type=None):
+    """Create or update the Yacht/Motorboat/Catamaran row for a boat.
+
+    Mirrors the Staff/Manager transition in edit_employee(): switching type
+    deletes the old subclass row before inserting the new one.
+    """
+    new_type = form.boat_type.data
+    if previous_type and previous_type != new_type:
+        model, pk = BOAT_SUBCLASSES[previous_type]
+        db.session.query(model).filter(getattr(model, pk) == boat_id).delete()
+        previous_type = None
+
+    match new_type:
+        case "yacht":
+            row = Yacht.query.get(boat_id) if previous_type else None
+            if row is None:
+                row = Yacht(YachtID=boat_id)
+                db.session.add(row)
+            row.YachtName = form.yacht_name.data or None
+            row.HasJacuzzi = bool(form.has_jacuzzi.data)
+        case "motorboat":
+            row = Motorboat.query.get(boat_id) if previous_type else None
+            if row is None:
+                row = Motorboat(MotorboatID=boat_id)
+                db.session.add(row)
+            row.EngineType = form.engine_type.data or None
+            row.FuelType = form.fuel_type.data or None
+        case "catamaran":
+            row = Catamaran.query.get(boat_id) if previous_type else None
+            if row is None:
+                row = Catamaran(CatamaranID=boat_id)
+                db.session.add(row)
+            row.NrOfCabins = form.nr_of_cabins.data
+            row.MaxCapacity = form.max_capacity.data
+        case _:
+            raise ValueError(f"Unknown boat type: {new_type}")
+
+
+def office_choices():
+    return [
+        (o.OfficeID, f"{o.City}, {o.Country}")
+        for o in Office.query.order_by(Office.City).all()
+    ]
+
+
+@app.route("/manager/boats")
+@manager_required
+def list_boats():
+    boats = (
+        db.session.query(Boat, Office)
+        .join(Office, Boat.OfficeID == Office.OfficeID)
+        .order_by(Office.City, Boat.BoatID)
+        .all()
+    )
+    types = {boat.BoatID: boat_type_of(boat.BoatID) for boat, _ in boats}
+    return render_template(
+        "boats_list.html", boats=boats, types=types, delete_form=ConfirmDeleteForm()
+    )
+
+
+@app.route("/manager/boats/new", methods=["GET", "POST"])
+@manager_required
+def new_boat():
+    form = BoatForm()
+    form.office_id.choices = office_choices()
+
+    if not form.office_id.choices:
+        flash("Add a city first — a boat has to belong to one.", "warning")
+        return redirect(url_for("new_office"))
+
+    if request.method == "GET" and request.args.get("office_id"):
+        form.office_id.data = request.args["office_id"]
+
+    if form.validate_on_submit():
+        boat_id = f"B{uuid4().hex[:8]}"
+        try:
+            db.session.add(
+                Boat(
+                    BoatID=boat_id,
+                    OfficeID=form.office_id.data,
+                    Manufacturer=form.manufacturer.data.strip(),
+                    Seats=form.seats.data,
+                    Length=form.length.data,
+                    Weight=form.weight.data,
+                    Horsepower=form.horsepower.data,
+                    AvailabilityStatus=form.availability_status.data,
+                )
+            )
+            db.session.flush()
+            write_boat_subclass(boat_id, form)
+            db.session.commit()
+            flash(f"Boat {boat_id} added.", "success")
+            return redirect(url_for("list_boats"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {e}", "error")
+
+    return render_template("boat_form.html", form=form, boat=None)
+
+
+@app.route("/manager/boats/<boat_id>/edit", methods=["GET", "POST"])
+@manager_required
+def edit_boat(boat_id):
+    boat = Boat.query.get_or_404(boat_id)
+    previous_type = boat_type_of(boat_id)
+
+    form = BoatForm()
+    form.office_id.choices = office_choices()
+
+    if request.method == "GET":
+        form.office_id.data = boat.OfficeID
+        form.manufacturer.data = boat.Manufacturer
+        form.seats.data = boat.Seats
+        form.length.data = boat.Length
+        form.weight.data = boat.Weight
+        form.horsepower.data = boat.Horsepower
+        form.availability_status.data = boat.AvailabilityStatus
+        form.boat_type.data = previous_type or "motorboat"
+
+        match previous_type:
+            case "yacht":
+                y = Yacht.query.get(boat_id)
+                form.yacht_name.data = y.YachtName or ""
+                form.has_jacuzzi.data = bool(y.HasJacuzzi)
+            case "motorboat":
+                m = Motorboat.query.get(boat_id)
+                form.engine_type.data = m.EngineType or ""
+                form.fuel_type.data = m.FuelType or ""
+            case "catamaran":
+                c = Catamaran.query.get(boat_id)
+                form.nr_of_cabins.data = c.NrOfCabins
+                form.max_capacity.data = c.MaxCapacity
+
+    if form.validate_on_submit():
+        try:
+            boat.OfficeID = form.office_id.data
+            boat.Manufacturer = form.manufacturer.data.strip()
+            boat.Seats = form.seats.data
+            boat.Length = form.length.data
+            boat.Weight = form.weight.data
+            boat.Horsepower = form.horsepower.data
+            boat.AvailabilityStatus = form.availability_status.data
+            write_boat_subclass(boat_id, form, previous_type)
+            db.session.commit()
+            flash("Boat updated.", "success")
+            return redirect(url_for("list_boats"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {e}", "error")
+
+    return render_template("boat_form.html", form=form, boat=boat)
+
+
+@app.route("/manager/boats/<boat_id>/delete", methods=["POST"])
+@manager_required
+def delete_boat(boat_id):
+    form = ConfirmDeleteForm()
+    if not form.validate_on_submit():
+        flash("Invalid delete request.", "error")
+        return redirect(url_for("list_boats"))
+
+    boat = Boat.query.get_or_404(boat_id)
+
+    rentals = Rental.query.filter_by(BoatID=boat_id).count()
+    if rentals:
+        flash(
+            f"Cannot delete {boat_id}: it has {rentals} rental(s) on record. "
+            "Set it to Maintenance instead to take it out of service.",
+            "error",
+        )
+        return redirect(url_for("list_boats"))
+
+    try:
+        db.session.execute(
+            text("DELETE FROM `Maintains` WHERE `BoatID` = :id"), {"id": boat_id}
+        )
+        for model, pk in BOAT_SUBCLASSES.values():
+            db.session.query(model).filter(getattr(model, pk) == boat_id).delete()
+        db.session.delete(boat)
+        db.session.commit()
+        flash(f"Boat {boat_id} deleted.", "success")
+    except IntegrityError:
+        db.session.rollback()
+        flash("Cannot delete this boat — other records still reference it.", "error")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to delete boat %s", boat_id)
+        flash("Delete failed.", "error")
+
+    return redirect(url_for("list_boats"))

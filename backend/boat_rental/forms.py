@@ -1,9 +1,9 @@
 from flask import current_app
 from flask_wtf import FlaskForm
-from wtforms import SelectField, EmailField, DateField, SubmitField, StringField, HiddenField, BooleanField, IntegerField
+from wtforms import SelectField, EmailField, DateField, SubmitField, StringField, HiddenField, BooleanField, IntegerField, FloatField
 from wtforms.validators import DataRequired, Email, Optional, Length, NumberRange, ValidationError
 from datetime import date, timedelta
-from boat_rental.models import Office
+from boat_rental.models import Office, AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE
 
 
 def validate_future_date(form, field):
@@ -146,3 +146,44 @@ class EmployeeEditForm(FlaskForm):
 
 class ConfirmDeleteForm(FlaskForm):
     submit = SubmitField("Delete")
+
+class OfficeForm(FlaskForm):
+    city = StringField("City", validators=[DataRequired(), Length(max=50)])
+    country = StringField("Country", validators=[DataRequired(), Length(max=50)])
+    street = StringField("Street", validators=[DataRequired(), Length(max=100)])
+    zip = StringField("ZIP", validators=[DataRequired(), Length(max=10)])
+    submit = SubmitField("Save office")
+
+
+BOAT_TYPES = [("yacht", "Yacht"), ("motorboat", "Motorboat"), ("catamaran", "Catamaran")]
+
+
+class BoatForm(FlaskForm):
+    office_id = SelectField("City / office", validators=[DataRequired()], coerce=str)
+    manufacturer = StringField("Manufacturer", validators=[DataRequired(), Length(max=50)])
+    seats = IntegerField("Seats", validators=[DataRequired(), NumberRange(min=1, max=1000)])
+    length = FloatField("Length (m)", validators=[Optional(), NumberRange(min=0, max=1000)])
+    weight = FloatField("Weight (t)", validators=[Optional(), NumberRange(min=0, max=100_000)])
+    horsepower = IntegerField("Horsepower", validators=[Optional(), NumberRange(min=0, max=100_000)])
+    availability_status = SelectField(
+        "Availability",
+        choices=[(AVAILABILITY_AVAILABLE, "Available"), (AVAILABILITY_MAINTENANCE, "Maintenance")],
+        validators=[DataRequired()],
+        coerce=str,
+    )
+
+    boat_type = SelectField("Type", choices=BOAT_TYPES, validators=[DataRequired()], coerce=str)
+    
+    # Yacht extras
+    yacht_name = StringField("Yacht name", validators=[Optional(), Length(max=50)])
+    has_jacuzzi = BooleanField("Has jacuzzi?")
+    
+    # Motorboat extras
+    engine_type = StringField("Engine type", validators=[Optional(), Length(max=50)])
+    fuel_type = StringField("Fuel type", validators=[Optional(), Length(max=50)])
+    
+    # Catamaran extras
+    nr_of_cabins = IntegerField("Number of cabins", validators=[Optional(), NumberRange(min=0, max=500)])
+    max_capacity = IntegerField("Max capacity", validators=[Optional(), NumberRange(min=0, max=5000)])
+
+    submit = SubmitField("Save boat")
