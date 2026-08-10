@@ -1,16 +1,36 @@
 {% extends "base.html" %}
 
 {% block body %}
-<div class="content-section">
-    <h1>Welcome, {{ client["FirstName"] }}</h1>
-</div>
+<section class="chart-hero rise">
+  <img class="hero-photo" src="{{ url_for('static', filename='img/login_pic.jpg') }}" alt="">
+  <div class="hero-scrim"></div>
 
-<div class="login mb-4">
-  <img src="{{ url_for('static', filename='img/login_pic.jpg') }}" alt="Paradise">
-  <div class="overlay">
-    <h1 class="display-6 mb-2">Sail into your next adventure</h1>
-    <p class="lead mb-3">Yachts, catamarans, and motorboats in beautiful locations.</p>
-    <a class="btn btn-primary btn-lg" href="/booking">Book a boat</a>
+  {# Isobaths: the depth contours a chart draws around a coastline. Purely
+     atmospheric, so it is hidden from assistive tech. #}
+  <svg class="isobaths" viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <g fill="none" stroke="#7fc4cc" stroke-width="1">
+      <path d="M-40 330 C 180 300, 320 366, 520 336 S 900 268, 1240 316"/>
+      <path d="M-40 286 C 200 254, 330 322, 540 288 S 920 218, 1240 270" opacity=".8"/>
+      <path d="M-40 242 C 220 208, 340 278, 560 240 S 940 168, 1240 224" opacity=".62"/>
+      <path d="M-40 198 C 240 162, 350 234, 580 192 S 960 118, 1240 178" opacity=".46"/>
+      <path d="M-40 154 C 260 116, 360 190, 600 144 S 980 68, 1240 132" opacity=".32"/>
+      <path d="M-40 110 C 280 70, 370 146, 620 96 S 1000 18, 1240 86" opacity=".2"/>
+    </g>
+  </svg>
+
+  <div class="hero-body">
+    <p class="eyebrow">Welcome aboard, {{ client["FirstName"] }}</p>
+    <h1>Pick a harbour, pick your dates, pick the boat.</h1>
+    <p>Yachts, catamarans and motorboats across five Mediterranean ports. Availability is live — if it's listed, it's yours for those days.</p>
+    <a class="btn btn-success btn-lg" href="{{ url_for('booking') }}">Find a boat</a>
+
+    <div class="ports">
+      <span class="port">Mykonos</span>
+      <span class="port">Nice</span>
+      <span class="port">Barcelona</span>
+      <span class="port">Santorini</span>
+      <span class="port">Dubrovnik</span>
+    </div>
   </div>
-</div>
+</section>
 {% endblock %}

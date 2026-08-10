@@ -1,24 +1,33 @@
 {% extends "base.html" %}
 
 {% block body %}
-<div class="content-section">
-<h2>Select a client to continue!</h2>
-<p class="text-muted">New here? <a href="{{ url_for('register_client') }}">Create an account</a>.</p>
-{% if clients %}
-<ul>
-  {% for c in clients %}
-    <li class="list-group-item">
-      <a href="{{ url_for('select_client', client_id=c.ClientID) }}">
-      {{ c.FirstName }} {{ c.LastName }} {{ c.ClientID }}
-      </a>
-    </li>
-  {% endfor %}
-</ul>
-{% else %}
-<div class="alert alert-info">
-  No clients yet. <a href="{{ url_for('register_client') }}">Register the first one</a>,
-  or generate the demo data.
-</div>
-{% endif %}
+<div class="auth-wrap">
+  <div class="page-head">
+    <p class="eyebrow">Sign in</p>
+    <h1>Who's sailing?</h1>
+    <p>This demo has no passwords — pick your name to continue.
+       New here? <a href="{{ url_for('register_client') }}">Create an account</a>.</p>
+  </div>
+
+  <div class="content-section rise">
+    {% if clients %}
+    <ul class="client-list">
+      {% for c in clients %}
+        <li>
+          <a href="{{ url_for('select_client', client_id=c.ClientID) }}">
+            <span>{{ c.FirstName }} {{ c.LastName }}</span>
+            <span class="cid">{{ c.ClientID }}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="alert alert-info mb-0">
+      <h4>No accounts yet</h4>
+      <p>Generate the demo data above, or
+         <a href="{{ url_for('register_client') }}">register the first client</a>.</p>
+    </div>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

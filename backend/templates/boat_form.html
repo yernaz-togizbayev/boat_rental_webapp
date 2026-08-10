@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="content-section">
-  <h2>{{ "Edit boat " ~ boat.BoatID if boat else "Add boat" }}</h2>
+<div class="page-head">
+  <p class="eyebrow">Fleet</p>
+  <h1>{{ "Edit boat " ~ boat.BoatID if boat else "Add a boat" }}</h1>
+</div>
 
+<div class="content-section rise">
   {% if form.errors %}
     <div class="alert alert-danger">
       <ul class="mb-0">

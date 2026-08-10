@@ -1,151 +1,117 @@
 {% extends "base.html" %}
 
 {% block body %}
+<div class="page-head">
+  <p class="eyebrow">Fleet availability</p>
+  <h1>What's free, and where</h1>
+  <p>Boats open for booking in one harbour over a date range, with how much of the fleet that represents.</p>
+</div>
+
+<div class="card filter-card">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label for="city" class="form-label">Harbour</label>
+        <select name="city" id="city" class="form-select">
+          {% for office in offices %}
+          <option value="{{ office.City }}" {% if office.City == current_filter %}selected{% endif %}>
+            {{ office.City }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label for="start_date" class="form-label">From</label>
+        <input type="date" name="start_date" id="start_date" class="form-control"
+               value="{{ start_date.strftime('%Y-%m-%d') }}">
+      </div>
+      <div class="col-md-3">
+        <label for="end_date" class="form-label">To</label>
+        <input type="date" name="end_date" id="end_date" class="form-control"
+               value="{{ end_date.strftime('%Y-%m-%d') }}">
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Apply</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="stat-grid rise">
+  <div class="stat">
+    <span class="figure">{{ total_boats }}</span>
+    <span class="label">Boats in fleet</span>
+  </div>
+  <div class="stat">
+    <span class="figure">{{ available_count }}</span>
+    <span class="label">Not in maintenance</span>
+  </div>
+  <div class="stat is-accent">
+    <span class="figure">{{ boats|length }}</span>
+    <span class="label">Free in {{ current_filter }}</span>
+  </div>
+  <div class="stat">
+    <span class="figure" id="rentals-in-period">{{ rentals_in_period }}</span>
+    <span class="label">Rentals in {{ current_filter }}</span>
+  </div>
+</div>
+
 <div class="content-section">
-    <h2>Analytics report</h2>
-    <p class="text-muted">Available boats by city and date range</p>
-
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5>Filter options</h5>
-        </div>
-        <div class="card-body">
-            <form method="get" class="row g-3">
-                <div class="col-md-3">
-                    <label for="city" class="form-label">City:</label>
-                    <select name="city" id="city" class="form-control">
-                        {% for office in offices %}
-                        <option value="{{ office.City }}" {% if office.City == current_filter %}selected{% endif %}>
-                            {{ office.City }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label for="start_date" class="form-label">Start date:</label>
-                    <input type="date" name="start_date" id="start_date" class="form-control" 
-                           value="{{ start_date.strftime('%Y-%m-%d') }}">
-                </div>
-                <div class="col-md-3">
-                    <label for="end_date" class="form-label">End date:</label>
-                    <input type="date" name="end_date" id="end_date" class="form-control" 
-                           value="{{ end_date.strftime('%Y-%m-%d') }}">
-                </div>
-                <div class="col-md-3">
-                    <label>&nbsp;</label>
-                    <button type="submit" class="btn btn-primary form-control">Apply filters</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title text-primary">{{ total_boats }}</h5>
-                    <p class="card-text">Total boats</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title text-success">{{ available_count }}</h5>
-                    <p class="card-text">Available boats</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title text-info">{{ boats|length }}</h5>
-                    <p class="card-text">Available in {{ current_filter }}</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title text-warning" id="rentals-in-period">{{ rentals_in_period }}</h5>
-                    <p class="card-text">Rentals in {{ current_filter }}</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="alert alert-info">
-        <h6 class="mb-1">Current Analysis Period</h6>
-        <p class="mb-0">
-            <strong>City:</strong> {{ current_filter }} | 
-            <strong>Period:</strong> {{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }} 
-            ({{ period_days }} day{{ 's' if period_days != 1 else '' }})
+  <div class="page-head">
+    <div class="head-row">
+      <div>
+        <p class="eyebrow">
+          {{ start_date.strftime('%d %b %Y') }} – {{ end_date.strftime('%d %b %Y') }}
+          · {{ period_days }} day{{ 's' if period_days != 1 else '' }}
         </p>
+        <h2>Available Boats in {{ current_filter }}</h2>
+      </div>
     </div>
+  </div>
 
-    <div class="card">
-        <div class="card-header">
-            <h4>Available Boats in {{ current_filter }}</h4>
-            <small class="text-muted">
-                Boats available during {{ start_date.strftime('%Y-%m-%d') }} to {{ end_date.strftime('%Y-%m-%d') }}
-            </small>
-        </div>
-        <div class="card-body">
-            {% if boats %}
-            <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Boat ID</th>
-                            <th>Manufacturer</th>
-                            <th>Length (m)</th>
-                            <th>Seats</th>
-                            <th>Weight (kg)</th>
-                            <th>Horsepower</th>
-                            <th>Type</th>
-                            <th>Office City</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for boat, office in boats %}
-                        <tr>
-                            <td><strong>{{ boat.BoatID }}</strong></td>
-                            <td>{{ boat.Manufacturer }}</td>
-                            <td>{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</td>
-                            <td>{{ boat.Seats }}</td>
-                            <td>{{ "%.0f"|format(boat.Weight) if boat.Weight is not none else "—" }}</td>
-                            <td>{{ boat.Horsepower }} HP</td>
-                            <td>
-                                {% if boat.yacht %}
-                                    <span class="badge bg-warning">Yacht</span>
-                                {% elif boat.motorboat %}
-                                    <span class="badge bg-success">Motorboat</span>
-                                {% elif boat.catamaran %}
-                                    <span class="badge bg-primary">Catamaran</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">Boat</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <span class="badge bg-primary">{{ office.City }}</span>
-                            </td>
-                            <td>
-                                <span class="badge bg-success">{{ boat.AvailabilityStatus }}</span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="alert alert-info text-center">
-                <h4>No Available Boats Found</h4>
-                <p>No boats are available in <strong>{{ current_filter }}</strong> during the period 
-                   <strong>{{ start_date.strftime('%B %d, %Y') }}</strong> to <strong>{{ end_date.strftime('%B %d, %Y') }}</strong>.</p>
-                <p class="mb-0">Try selecting a different city or date range.</p>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    </div>{% endblock %}
+  {% if boats %}
+  <div class="table-responsive">
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Hull</th>
+          <th>Manufacturer</th>
+          <th>LOA m</th>
+          <th>Berths</th>
+          <th>Weight kg</th>
+          <th>HP</th>
+          <th>Type</th>
+          <th>Harbour</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for boat, office in boats %}
+        <tr>
+          <td><span class="num">{{ boat.BoatID }}</span></td>
+          <td>{{ boat.Manufacturer }}</td>
+          <td><span class="num">{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</span></td>
+          <td><span class="num">{{ boat.Seats }}</span></td>
+          <td><span class="num">{{ "%.0f"|format(boat.Weight) if boat.Weight is not none else "—" }}</span></td>
+          <td><span class="num">{{ boat.Horsepower }}</span></td>
+          <td>
+            {% if boat.yacht %}<span class="badge bg-warning">Yacht</span>
+            {% elif boat.motorboat %}<span class="badge bg-success">Motorboat</span>
+            {% elif boat.catamaran %}<span class="badge bg-primary">Catamaran</span>
+            {% else %}<span class="badge bg-secondary">Boat</span>{% endif %}
+          </td>
+          <td>{{ office.City }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info mb-0">
+    <h4>No Available Boats Found</h4>
+    <p>Nothing is free in <strong>{{ current_filter }}</strong> from
+       {{ start_date.strftime('%d %b %Y') }} to {{ end_date.strftime('%d %b %Y') }}.</p>
+    <p>Try a shorter window or another harbour.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

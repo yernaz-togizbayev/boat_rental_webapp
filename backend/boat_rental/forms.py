@@ -73,8 +73,7 @@ class BoatSelectionForm(FlaskForm):
 
 
 def _describe_boat(boat):
-    length = f"{boat.Length:.1f}m" if boat.Length is not None else "length n/a"
-    return f"{boat.BoatID} - {boat.Manufacturer} ({boat.Seats} seats, {length}, {boat.Horsepower}HP)"
+    return f"{boat.BoatID} · {boat.Manufacturer}"
 
 
 

@@ -1,87 +1,630 @@
+/* ==========================================================================
+   Boat rental — visual system
+
+   Direction: admiralty chart. Chart paper ground, ink line work, shallow-water
+   cyan, and chart magenta — which on a real nautical chart marks lights,
+   cautions and restricted areas, and here carries every committing or
+   destructive action.
+
+   Loaded after Bootstrap, so single-class overrides below win on cascade
+   order without needing !important or specificity hacks.
+   ========================================================================== */
+
+:root {
+  /* Chart palette */
+  --ink:        #0a2333;  /* line work, body text, nav */
+  --ink-soft:   #163a50;
+  --paper:      #edf1f2;  /* chart paper: cool grey, deliberately not cream */
+  --surface:    #ffffff;  /* deep water: cards, tables */
+  --shallow:    #c9e7ea;  /* shallow-water fill: informational states */
+  --shallow-dp: #7fc4cc;
+  --sound:      #5c7a8a;  /* soundings: secondary text */
+  --hairline:   #d4dee1;
+  --magenta:    #c81e64;  /* chart magenta: commit + caution */
+  --magenta-dk: #a3164f;
+  --buff:       #e7dcc6;  /* land: warning fills */
+
+  /* Type */
+  --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --ui:      "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --step--2: 0.6875rem;
+  --step--1: 0.8125rem;
+  --step-0:  0.9375rem;
+  --step-1:  1.0625rem;
+  --step-2:  1.375rem;
+  --step-3:  1.875rem;
+
+  --radius:    10px;
+  --radius-sm: 6px;
+  --shadow:    0 1px 2px rgba(10, 35, 51, .06), 0 8px 24px -12px rgba(10, 35, 51, .18);
+  --shadow-lg: 0 2px 4px rgba(10, 35, 51, .06), 0 24px 48px -20px rgba(10, 35, 51, .28);
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
 body {
-  background: #fafafa;
-  color: #333333;
-  margin-top: 1rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: var(--step-0);
+  line-height: 1.55;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  color: #444444;
+  font-family: var(--display);
+  color: var(--ink);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
-.bg-steel {
-  background-color: #5f788a;
+h1 { font-size: var(--step-3); }
+h2 { font-size: var(--step-2); }
+h3 { font-size: var(--step-1); }
+h4, h5, h6 { font-size: var(--step-0); }
+
+a { color: var(--ink); text-decoration-color: var(--shallow-dp); text-underline-offset: 3px; }
+a:hover { color: var(--magenta); text-decoration-color: currentColor; }
+
+.text-muted { color: var(--sound) !important; }
+
+/* Every measurement, ID, date and count is mono — the app is tabular figures
+   and they have to align. */
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+:focus-visible {
+  outline: 2px solid var(--magenta);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
+
+/* --------------------------------------------------------------------------
+   Shell: nav + page frame
+   -------------------------------------------------------------------------- */
+
+/* Sticky lives on the header, not the nav: a sticky element only sticks
+   within its parent's box, and the header is exactly the nav's height —
+   so sticking the nav itself would do nothing at all. */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+.site-header .navbar {
+  background: var(--ink) !important;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+
+.navbar-brand.chart-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 1.0625rem;
+  letter-spacing: -0.03em;
+  color: #fff;
+  padding: 0;
+}
+.navbar-brand.chart-brand:hover { color: #fff; }
+.chart-brand .rose { color: var(--magenta); display: block; }
+.chart-brand .rose svg { display: block; }
 
 .site-header .navbar-nav .nav-link {
-  color: #cbd5db;
-}
-
-.site-header .navbar-nav .nav-link:hover {
-  color: #ffffff;
-}
-
-.site-header .navbar-nav .nav-link.active {
+  color: #a9c2ce;
+  font-size: var(--step--1);
   font-weight: 500;
+  padding: .35rem .7rem;
+  border-radius: var(--radius-sm);
+  transition: color .15s ease, background-color .15s ease;
+}
+.site-header .navbar-nav .nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, .07);
+}
+/* The magenta underline is the only accent in the bar — it marks where you are. */
+.site-header .navbar-nav .nav-link.is-current {
+  color: #fff;
+  box-shadow: inset 0 -2px 0 var(--magenta);
+  border-radius: 0;
+}
+.site-header .navbar-nav .nav-role {
+  color: #7d99a8;
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: .35rem .7rem;
+}
+.navbar-toggler {
+  border-color: rgba(255, 255, 255, .18);
+  padding: .25rem .5rem;
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 4rem;
+}
+
+/* Page header band: eyebrow reads as a chart legend caption. */
+.page-head { margin-bottom: 1.5rem; }
+.page-head .eyebrow {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--sound);
+  margin: 0 0 .35rem;
+}
+.page-head h1, .page-head h2 { margin: 0; }
+.page-head p { color: var(--sound); margin: .4rem 0 0; max-width: 60ch; }
+.page-head .head-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------
+   Surfaces
+   -------------------------------------------------------------------------- */
+
+.content-section,
+.card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
 .content-section {
-  background: #ffffff;
-  padding: 10px 20px;
-  border: 1px solid #dddddd;
-  border-radius: 3px;
-  margin-bottom: 20px;
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+.content-section > :first-child { margin-top: 0; }
+.content-section > :last-child { margin-bottom: 0; }
+
+.card { margin-bottom: 1.25rem; }
+.card-header {
+  background: transparent;
+  border-bottom: 1px solid var(--hairline);
+  padding: .9rem 1.25rem;
+}
+.card-header h5 { margin: 0; font-size: var(--step-0); }
+.card-body { padding: 1.25rem; }
+
+/* Filter/search bars sit on paper so they read as controls, not content. */
+.card.filter-card { background: var(--paper); box-shadow: none; }
+
+/* --------------------------------------------------------------------------
+   Signature: the sounding strip
+
+   Depths on a chart are printed as bare numerals. Boat specs get the same
+   treatment — the numeral carries, the unit is a hairline caption.
+   -------------------------------------------------------------------------- */
+
+.soundings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.75rem;
+  align-items: flex-start;
+}
+.sounding { line-height: 1; }
+.sounding .figure {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+.sounding .figure.is-null { color: var(--hairline); }
+.sounding .unit {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--sound);
+  margin-top: .3rem;
 }
 
-.article-title {
-  color: #444444;
+/* Boat card = the spec plate bolted to a helm. Hairline isobath along the top. */
+.spec-plate {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem 1.15rem;
+  overflow: hidden;
+  height: 100%;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.spec-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--shallow-dp), var(--shallow) 60%, transparent);
+}
+.spec-plate:hover {
+  border-color: var(--shallow-dp);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+.spec-plate .plate-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .9rem;
+}
+.spec-plate .hull-id {
+  font-family: var(--mono);
+  font-size: var(--step--1);
+  font-weight: 500;
+  letter-spacing: .04em;
+  color: var(--sound);
+}
+.spec-plate .maker {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: var(--step-1);
+  letter-spacing: -0.02em;
 }
 
-a.article-title:hover {
-  color: #428bca;
-  text-decoration: none;
+/* --------------------------------------------------------------------------
+   Buttons
+   magenta solid = commit · magenta outline = caution · ink = navigate
+   -------------------------------------------------------------------------- */
+
+.btn {
+  font-family: var(--ui);
+  font-size: var(--step--1);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  border-radius: var(--radius-sm);
+  padding: .5rem 1rem;
+  border-width: 1px;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease, transform .1s ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn-lg { font-size: var(--step-0); padding: .7rem 1.4rem; }
+.btn-sm { font-size: var(--step--2); padding: .3rem .6rem; }
+
+.btn-primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn-primary:hover, .btn-primary:focus { background: var(--ink-soft); border-color: var(--ink-soft); color: #fff; }
+
+.btn-success { background: var(--magenta); border-color: var(--magenta); color: #fff; }
+.btn-success:hover, .btn-success:focus { background: var(--magenta-dk); border-color: var(--magenta-dk); color: #fff; }
+
+.btn-secondary { background: transparent; border-color: var(--hairline); color: var(--ink); }
+.btn-secondary:hover, .btn-secondary:focus { background: var(--paper); border-color: var(--sound); color: var(--ink); }
+
+.btn-outline-primary { border-color: var(--hairline); color: var(--ink); background: transparent; }
+.btn-outline-primary:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+.btn-outline-success { border-color: var(--shallow-dp); color: var(--ink); background: transparent; }
+.btn-outline-success:hover { background: var(--shallow); border-color: var(--shallow-dp); color: var(--ink); }
+
+.btn-outline-danger { border-color: rgba(200, 30, 100, .35); color: var(--magenta); background: transparent; }
+.btn-outline-danger:hover { background: var(--magenta); border-color: var(--magenta); color: #fff; }
+
+/* --------------------------------------------------------------------------
+   Forms
+   -------------------------------------------------------------------------- */
+
+.form-label {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--sound);
+  margin-bottom: .35rem;
 }
 
-.article-content {
-  white-space: pre-line;
+.form-control, .form-select {
+  font-family: var(--ui);
+  font-size: var(--step-0);
+  color: var(--ink);
+  background-color: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: .5rem .7rem;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
-
-.article-img {
-  height: 65px;
-  width: 65px;
-  margin-right: 16px;
+.form-control:focus, .form-select:focus {
+  border-color: var(--shallow-dp);
+  box-shadow: 0 0 0 3px rgba(127, 196, 204, .3);
+  outline: none;
 }
+/* Bootstrap reserves this space for the chevron; the padding shorthand above
+   would otherwise let the label run underneath it. */
+.form-select { padding-right: 2.25rem; }
+.form-control::placeholder { color: #9db2bc; }
+input[type="date"].form-control { font-family: var(--mono); font-size: var(--step--1); }
+.form-check-input:checked { background-color: var(--magenta); border-color: var(--magenta); }
 
-.article-metadata {
-  padding-bottom: 1px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid #e3e3e3
+/* --------------------------------------------------------------------------
+   Tables — hairline rules, micro-caps headers, mono figures
+   -------------------------------------------------------------------------- */
+
+/* Bootstrap paints striping and hover as an inset box-shadow on the cells,
+   reading --bs-table-accent-bg off the row -- so these have to be set as
+   custom properties. A plain background-color on the <tr> is painted over. */
+.table {
+  color: var(--ink);
+  font-size: var(--step--1);
+  margin-bottom: 0;
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: rgba(237, 241, 242, .7);
+  --bs-table-striped-color: var(--ink);
 }
-
-.article-metadata a:hover {
-  color: #333;
-  text-decoration: none;
+.table > thead > tr > th {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--sound);
+  border-bottom: 1px solid var(--ink);
+  padding: .5rem .75rem;
+  white-space: nowrap;
 }
-
-.article-svg {
-  width: 25px;
-  height: 25px;
+.table > tbody > tr > td {
+  padding: .65rem .75rem;
+  border-bottom: 1px solid var(--hairline);
   vertical-align: middle;
 }
+.table > tbody > tr:last-child > td { border-bottom: 0; }
+.table > tbody > tr:hover { --bs-table-accent-bg: rgba(201, 231, 234, .4); }
 
-.account-img {
-  height: 125px;
-  width: 125px;
-  margin-right: 20px;
-  margin-bottom: 16px;
+/* --------------------------------------------------------------------------
+   Badges, alerts, empty states
+   -------------------------------------------------------------------------- */
+
+.badge {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  padding: .3em .6em;
+  border-radius: 4px;
+}
+.badge.bg-success  { background: var(--shallow) !important; color: #12525c !important; }
+.badge.bg-primary  { background: rgba(10, 35, 51, .08) !important; color: var(--ink) !important; }
+.badge.bg-warning  { background: var(--buff) !important; color: #6b5322 !important; }
+.badge.bg-secondary{ background: var(--paper) !important; color: var(--sound) !important; }
+.badge.bg-danger   { background: rgba(200, 30, 100, .12) !important; color: var(--magenta-dk) !important; }
+
+.alert {
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--sound);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--step--1);
+  padding: .8rem 1rem;
+}
+/* Same reason as .form-select: the padding shorthand above wipes out the
+   room Bootstrap reserves for the dismiss button. */
+.alert-dismissible { padding-right: 3rem; }
+.alert h4, .alert h5, .alert h6 { font-size: var(--step-0); margin-bottom: .3rem; }
+.alert p:last-child { margin-bottom: 0; }
+.alert-success { border-left-color: var(--shallow-dp); background: rgba(201, 231, 234, .3); }
+.alert-info    { border-left-color: var(--sound); background: var(--paper); }
+.alert-warning { border-left-color: #c8a34a; background: rgba(231, 220, 198, .45); }
+.alert-danger  { border-left-color: var(--magenta); background: rgba(200, 30, 100, .06); }
+
+.flash-stack { margin-bottom: 1.25rem; }
+
+/* --------------------------------------------------------------------------
+   Stat cards on /analytics — soundings, scaled down
+   -------------------------------------------------------------------------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .75rem;
+  margin-bottom: 1.25rem;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+.stat .figure {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.875rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  display: block;
+}
+.stat .label {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--sound);
+  margin-top: .45rem;
+  display: block;
+}
+.stat.is-accent { border-color: rgba(200, 30, 100, .25); }
+.stat.is-accent .figure { color: var(--magenta); }
+
+/* --------------------------------------------------------------------------
+   Hero — isobath field behind the type
+   -------------------------------------------------------------------------- */
+
+.chart-hero {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--ink);
+  color: #fff;
+  isolation: isolate;
+  box-shadow: var(--shadow-lg);
+}
+.chart-hero .hero-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .5;
+  z-index: -2;
+}
+.chart-hero .hero-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(100deg, rgba(10, 35, 51, .95) 12%, rgba(10, 35, 51, .55) 62%, rgba(10, 35, 51, .3) 100%);
+}
+.chart-hero .isobaths {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  opacity: .3;
+  pointer-events: none;
+}
+.chart-hero .hero-body { padding: clamp(2rem, 5vw, 3.5rem); max-width: 46rem; }
+.chart-hero .eyebrow {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  color: var(--shallow);
+  margin: 0 0 .9rem;
+}
+.chart-hero h1 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(2rem, 5.2vw, 3.25rem);
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  color: #fff;
+  margin: 0 0 .8rem;
+}
+.chart-hero p {
+  font-size: var(--step-1);
+  color: #c3d6df;
+  margin: 0 0 1.6rem;
+  max-width: 38ch;
 }
 
-.account-heading {
-  font-size: 2.5rem;
+/* Ports strip: the fleet's actual harbours, as chart marginalia. */
+.ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem .5rem;
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, .14);
+}
+.ports .port {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: #9fbecb;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 3px;
+  padding: .25rem .5rem;
 }
 
-.login{position:relative;min-height:320px;border-radius:20px;overflow:hidden;
-  box-shadow:0 16px 40px rgba(0,0,0,.12)}
-.login img{width:100%;height:100%;object-fit:cover;filter:brightness(.8)}
-.login .overlay{position:absolute;inset:0;display:flex;flex-direction:column;
-  justify-content:flex-start;padding:clamp(3rem,0vw,1rem);color:#fff}
-.feature-icons .bi{font-size:1.5rem}
+/* --------------------------------------------------------------------------
+   Auth pages
+   -------------------------------------------------------------------------- */
+
+.auth-wrap { max-width: 34rem; margin: 0 auto; }
+
+.client-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.client-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .7rem .9rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 500;
+  transition: border-color .15s ease, background-color .15s ease, transform .1s ease;
+}
+.client-list a:hover {
+  border-color: var(--shallow-dp);
+  background: rgba(201, 231, 234, .22);
+  transform: translateX(2px);
+  color: var(--ink);
+}
+.client-list .cid {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  color: var(--sound);
+  letter-spacing: .04em;
+}
+
+/* Seed panel: a notice, not a wall. Magenta because it rewrites everything. */
+.seed-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--magenta);
+  border-radius: var(--radius-sm);
+  padding: .85rem 1.1rem;
+  margin-bottom: 1.25rem;
+}
+.seed-notice p { margin: 0; font-size: var(--step--1); color: var(--sound); }
+.seed-notice strong { color: var(--ink); display: block; font-size: var(--step-0); }
+.seed-notice form { margin: 0; flex-shrink: 0; }
+
+/* --------------------------------------------------------------------------
+   Motion + responsive
+   -------------------------------------------------------------------------- */
+
+.rise { animation: rise .45s cubic-bezier(.22, 1, .36, 1) backwards; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+  .spec-plate:hover, .client-list a:hover { transform: none; }
+}
+
+@media (max-width: 767.98px) {
+  .page { padding: 1.25rem 1rem 3rem; }
+  .content-section { padding: 1.1rem; }
+  .soundings { gap: 0 1.25rem; }
+  .site-header .navbar-nav .nav-link.is-current { box-shadow: inset 2px 0 0 var(--magenta); }
+  .seed-notice { align-items: flex-start; }
+}

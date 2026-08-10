@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="content-section">
-  <h2>Hire new employee</h2>
+<div class="page-head">
+  <p class="eyebrow">Roster</p>
+  <h1>Hire an employee</h1>
+</div>
+
+<div class="content-section rise">
   {% with %}
     {% if form.errors %}
       <div class="alert alert-danger">

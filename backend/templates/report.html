@@ -1,57 +1,63 @@
 {% extends "base.html" %}
 
 {% block body %}
-<div class="content-section">
-<h2>Your Rentals</h2>
+<div class="page-head">
+  <p class="eyebrow">Logbook</p>
+  <h1>Your Rentals</h1>
+  <p>Everything you've booked. A rental can be cancelled up until the day it starts.</p>
+</div>
+
 {% if rentals %}
-<div class="table-responsive">
+<div class="content-section rise">
+  <div class="table-responsive">
     <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Boat ID</th>
-                <th>Start Date</th>
-                <th>End Date</th>
-                <th>Payment Status</th>
-                <th>Duration (Days)</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for rental in rentals %}
-            <tr>
-                <td>{{ rental.BoatID }}</td>
-                <td>{{ rental.RentalDate }}</td>
-                <td>{{ rental.RentalEndDate }}</td>
-                <td>
-                    <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
-                        {{ rental.PaymentStatus }}
-                    </span>
-                </td>
-                <td>{{ rental.rental_days }}</td>
-                <td>
-                    {% if rental.RentalDate > today %}
-                    <form method="post" style="display:inline"
-                          action="{{ url_for('cancel_rental', boat_id=rental.BoatID, rental_date=rental.RentalDate.strftime('%Y-%m-%d')) }}"
-                          onsubmit="return confirm('Cancel the rental of boat {{ rental.BoatID }}?')">
-                        {{ delete_form.hidden_tag() }}
-                        <button class="btn btn-sm btn-outline-danger">Cancel</button>
-                    </form>
-                    {% else %}
-                    <span class="text-muted">Started</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
+      <thead>
+        <tr>
+          <th>Boat</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Days</th>
+          <th>Payment</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rental in rentals %}
+        <tr>
+          <td><span class="num">{{ rental.BoatID }}</span></td>
+          <td><span class="num">{{ rental.RentalDate.strftime('%Y-%m-%d') }}</span></td>
+          <td><span class="num">{{ rental.RentalEndDate.strftime('%Y-%m-%d') if rental.RentalEndDate else "—" }}</span></td>
+          <td><span class="num">{{ rental.rental_days }}</span></td>
+          <td>
+            <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
+              {{ rental.PaymentStatus }}
+            </span>
+          </td>
+          <td>
+            {% if rental.RentalDate > today %}
+            <form method="post" style="display:inline"
+                  action="{{ url_for('cancel_rental', boat_id=rental.BoatID, rental_date=rental.RentalDate.strftime('%Y-%m-%d')) }}"
+                  onsubmit="return confirm('Cancel the rental of boat {{ rental.BoatID }}?')">
+              {{ delete_form.hidden_tag() }}
+              <button class="btn btn-sm btn-outline-danger">Cancel</button>
+            </form>
+            {% else %}
+            <span class="text-muted">Started</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
+  </div>
 </div>
 {% else %}
-<div class="alert alert-info">
-    <h4>No rentals found</h4>
-    <p>You haven't made any boat rentals yet.</p>
-    <a href="{{ url_for('booking') }}" class="btn btn-primary">Book Your First Rental</a>
+<div class="content-section rise">
+  <div class="alert alert-info mb-0">
+    <h4>Nothing booked yet</h4>
+    <p>Pick a harbour and some dates, and your rentals will show up here.</p>
+    <a href="{{ url_for('booking') }}" class="btn btn-success mt-2">Find a boat</a>
+  </div>
 </div>
 {% endif %}
-
-</div>
 {% endblock %}

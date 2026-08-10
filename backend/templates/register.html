@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="content-section">
-  <h2>Create your account</h2>
-  <p class="text-muted">You need an account to book a boat. No password required — this is a demo app.</p>
+<div class="page-head">
+  <p class="eyebrow">Sign up</p>
+  <h1>Create your account</h1>
+  <p>You need an account to book a boat. No password required — this is a demo.</p>
+</div>
 
+<div class="content-section rise">
   {% if form.errors %}
     <div class="alert alert-danger">
       <ul class="mb-0">

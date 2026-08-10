@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="content-section">
-  <h2>{{ "Edit " ~ office.City if office else "Add city" }}</h2>
+<div class="page-head">
+  <p class="eyebrow">Harbours</p>
+  <h1>{{ "Edit " ~ office.City if office else "Add a city" }}</h1>
   {% if not office %}
-    <p class="text-muted">A city is an office location. Clients pick it when searching for boats.</p>
+    <p>A city is an office location. Clients pick it when searching for boats.</p>
   {% endif %}
+</div>
 
+<div class="content-section rise">
   {% if form.errors %}
     <div class="alert alert-danger">
       <ul class="mb-0">

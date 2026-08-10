@@ -1,16 +1,25 @@
 {% extends "base.html" %}
+
 {% block body %}
-<div class="content-section">
-  <h2>Manager login</h2>
-  <form method="post" class="row g-3">
-    {{ form.hidden_tag() }}
-    <div class="col-md-6">
-      {{ form.manager_id.label(class="form-label") }}
-      {{ form.manager_id(class="form-select") }}
-    </div>
-    <div class="col-12">
-      {{ form.submit(class="btn btn-primary") }}
-    </div>
-  </form>
+<div class="auth-wrap">
+  <div class="page-head">
+    <p class="eyebrow">Office</p>
+    <h1>Manager access</h1>
+    <p>Signing in as a manager gives you the fleet, the harbours, and the staff roster.</p>
+  </div>
+
+  <div class="content-section rise">
+    <form method="post" class="row g-3">
+      {{ form.hidden_tag() }}
+      <div class="col-12">
+        {{ form.manager_id.label(class="form-label") }}
+        {{ form.manager_id(class="form-select") }}
+      </div>
+      <div class="col-12">
+        {{ form.submit(class="btn btn-primary") }}
+        <a class="btn btn-secondary ms-2" href="{{ url_for('login') }}">Sign in as a client</a>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}
