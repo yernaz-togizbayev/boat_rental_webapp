@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS Office (
 );
 
 -- Employee (superclass for Staff and Manager)
-CREATE OR REPLACE TABLE Employee (
+CREATE TABLE IF NOT EXISTS Employee (
     EmployeeID VARCHAR(50) PRIMARY KEY,
     OfficeID VARCHAR(50) NOT NULL,
     FirstName VARCHAR(50) NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS Staff (
 );
 
 -- Manager (IS-A Employee)
-CREATE OR REPLACE TABLE Manager (
+CREATE TABLE IF NOT EXISTS Manager (
     ManagerID VARCHAR(50) PRIMARY KEY,
     Department VARCHAR(50),
     ManagementLevel VARCHAR(50),

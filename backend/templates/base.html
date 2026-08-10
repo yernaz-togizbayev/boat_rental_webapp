@@ -62,18 +62,32 @@
     <main role="main" class="container" style="padding-top: 4.5rem;">
       <div class="row">
         <div class="col-md-8">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ 'danger' if category == 'error' else 'warning' if category == 'warning' else 'success' }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endwith %}
+
           {% block body %}{% endblock %}
         </div>
         <div class="col-md-4">
+          {% if not session.data_generated %}
           <div class="content-section">
-            <form method="post" action="{{ url_for('reset_data') }}" style="display: inline;">
+            <h5>Start here</h5>
+            <p class="text-muted">Fill the database with demo offices, boats, clients and
+               employees. You only need to do this once.</p>
+            <form method="post" action="{{ url_for('reset_data') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-success" 
-                onclick="return confirm('This will replace all existing data. Continue?')">
-                Generate Data
+              <button type="submit" class="btn btn-success"
+                onclick="return confirm('This replaces all existing data and signs you out. Continue?')">
+                Generate demo data
               </button>
             </form>
           </div>
+          {% endif %}
         </div>
       </div>
     </main>

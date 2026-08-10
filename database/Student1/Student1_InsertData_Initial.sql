@@ -1,16 +1,14 @@
-USE boat_rental;
-
-INSERT INTO Client (ClientID, FirstName, LastName, Street, ZIP, Country, City, Birthdate, Email, MobileNumber, CaptainLicenseNumber) VALUES
-("C123", "Max", "Mustermann", "Bergergasse 8-10/7/15", "1080", "Austria", "Vienna", "1990-01-01", "max.mustermann@example.com", "+43-555-123-4567", "CAPT-123456"),
-("C213", "Olga", "Primerova", "Potsdamer Str. 1", "10115", "Germany", "Berlin", "1985-02-15", "olga.primerova@example.com", "+49-30-123-4567", "CAPT-234567"),
-("C984", "Fabio", "Exemplario", "Via di Vittorio Emanuele II, 1", "00186", "Italy", "Rome", "1992-03-10", "fabio.exemplario@example.com", "+39-06-123-4567", "CAPT-345678");
-
 INSERT INTO Office (OfficeID, Street, Country, City, ZIP) VALUES
 ('O1', 'Tourlos Marina​', 'Greece', 'Mykonos', '84600'),
 ('O2', 'Quai des Docks', 'France', 'Nice', '06000'),
 ('O3', 'Moll de la Barceloneta, 1', 'Spain', 'Barcelona', '08039'),
 ('O4', 'Old Port of Fira', 'Greece', 'Santorini', '84700'),
 ('O5', 'Obala Stjepana Radića, 2​', 'Croatia', 'Dubrovnik', '20000');
+
+INSERT INTO Client (ClientID, FirstName, LastName, Street, ZIP, Country, City, Birthdate, Email, MobileNumber, CaptainLicenseNumber) VALUES
+("C123", "Max", "Mustermann", "Bergergasse 8-10/7/15", "1080", "Austria", "Vienna", "1990-01-01", "max.mustermann@example.com", "+43-555-123-4567", "CAPT-123456"),
+("C213", "Olga", "Primerova", "Potsdamer Str. 1", "10115", "Germany", "Berlin", "1985-02-15", "olga.primerova@example.com", "+49-30-123-4567", "CAPT-234567"),
+("C984", "Fabio", "Exemplario", "Via di Vittorio Emanuele II, 1", "00186", "Italy", "Rome", "1992-03-10", "fabio.exemplario@example.com", "+39-06-123-4567", "CAPT-345678");
 
 INSERT INTO Boat (BoatID, OfficeID, Length, Seats, Manufacturer, AvailabilityStatus, Weight, Horsepower) VALUES
 ("B100", "O1", 14, 8, "Manufacturer1", "Available", 1200.0, 90),

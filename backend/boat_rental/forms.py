@@ -1,3 +1,4 @@
+from flask import current_app
 from flask_wtf import FlaskForm
 from wtforms import SelectField, EmailField, DateField, SubmitField, StringField, HiddenField, BooleanField, IntegerField
 from wtforms.validators import DataRequired, Email, Optional, Length, NumberRange, ValidationError
@@ -28,12 +29,12 @@ class BookingSearchForm(FlaskForm):
     start_date = DateField(
         "Start Date",
         validators=[DataRequired(), validate_future_date],
-        default=date.today(),
+        default=date.today,
     )
     end_date = DateField(
         "End Date",
         validators=[DataRequired(), validate_end_after_start],
-        default=date.today() + timedelta(days=1),
+        default=lambda: date.today() + timedelta(days=1),
     )
     search = SubmitField("Search available boats")
 
@@ -44,7 +45,10 @@ class BookingSearchForm(FlaskForm):
             self.city.choices = [("", "Select City...")] + [
                 (city[0], city[0]) for city in cities
             ]
-        except:
+        except Exception:
+            # The office table may not exist yet (first boot, before the
+            # init scripts have run) — fall back to an empty picker.
+            current_app.logger.exception("Could not load city choices")
             self.city.choices = [("", "Select City...")]
 
 
@@ -57,18 +61,20 @@ class BoatSelectionForm(FlaskForm):
     )
     rental_date = HiddenField()
     rental_end_date = HiddenField()
+    city = HiddenField()
     book = SubmitField("Book")
 
     def __init__(self, available_boats=None, *args, **kwargs):
         super(BoatSelectionForm, self).__init__(*args, **kwargs)
         if available_boats:
             self.boat_id.choices = [("", "Choose a boat...")] + [
-                (
-                    str(boat.BoatID),
-                    f"{boat.BoatID} - {boat.Manufacturer} ({boat.Seats} seats, {boat.Length:.1f}m, {boat.Horsepower}HP)",
-                )
-                for boat, office in available_boats
+                (str(boat.BoatID), _describe_boat(boat)) for boat, office in available_boats
             ]
+
+
+def _describe_boat(boat):
+    length = f"{boat.Length:.1f}m" if boat.Length is not None else "length n/a"
+    return f"{boat.BoatID} - {boat.Manufacturer} ({boat.Seats} seats, {length}, {boat.Horsepower}HP)"
 
 
 

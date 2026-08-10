@@ -9,8 +9,8 @@ import os
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 csrf = CSRFProtect(app)
 
-app.secret_key = "dev"
-app.config["SQLALCHEMY_DATABASE_URI"] = (
+app.secret_key = os.getenv("SECRET_KEY", "dev")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") or (
     f"mysql+pymysql://{os.getenv('DB_USER', 'user')}:"
     f"{os.getenv('DB_PASSWORD', 'pass')}@"
     f"{os.getenv('DB_HOST', 'db')}:"
@@ -18,6 +18,10 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
     f"{os.getenv('DB_NAME', 'boatdb')}"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 280,
+}
 db = SQLAlchemy(app)
 
 @app.context_processor

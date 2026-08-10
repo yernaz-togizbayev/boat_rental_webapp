@@ -2,13 +2,17 @@
 {% block body %}
 <div class="content-section">
   <h2>Edit employee: {{ employee.FirstName }} {{ employee.LastName }}</h2>
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
-          {{ message }} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      {% endfor %}
+  {% with %}
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        <ul class="mb-0">
+          {% for field, errors in form.errors.items() %}
+            {% for err in errors %}
+              <li>{{ form[field].label.text if field in form else field }}: {{ err }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
     {% endif %}
   {% endwith %}
 

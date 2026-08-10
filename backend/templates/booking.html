@@ -5,17 +5,6 @@
     <h2>Book a Boat Rental</h2>
     <p class="text-muted">Select city and dates to find available boats</p>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
     <div class="card mb-4">
         <div class="card-header">
             <h5>Search Available Boats</h5>
@@ -78,10 +67,10 @@
         <div class="card-body">
             {% if booking_form %}
             <form method="post">
+                {# hidden_tag() emits csrf_token plus the rental_date,
+                   rental_end_date and city hidden fields. #}
                 {{ booking_form.hidden_tag() }}
-                {{ booking_form.rental_date() }}
-                {{ booking_form.rental_end_date() }}
-                
+
                 <div class="mb-3">
                     {{ booking_form.boat_id.label(class="form-label") }}
                     {{ booking_form.boat_id(class="form-control") }}
@@ -121,7 +110,7 @@
                             <tr>
                                 <td><strong>{{ boat.BoatID }}</strong></td>
                                 <td>{{ boat.Manufacturer }}</td>
-                                <td>{{ "%.1f"|format(boat.Length) }}m</td>
+                                <td>{{ "%.1f m"|format(boat.Length) if boat.Length is not none else "—" }}</td>
                                 <td>{{ boat.Seats }}</td>
                                 <td>{{ boat.Horsepower }}HP</td>
                                 <td>

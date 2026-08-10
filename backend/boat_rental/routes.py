@@ -1,20 +1,19 @@
-from flask import flash, redirect, request, jsonify, render_template, session, url_for
-from datetime import datetime, date
-from sqlalchemy import and_, select, or_
+from flask import flash, redirect, request, render_template, session, url_for
+from datetime import datetime, date, timedelta
+from sqlalchemy import and_, select, or_, text
 from sqlalchemy.exc import IntegrityError
 from functools import wraps
+from uuid import uuid4
 
 from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm
 from boat_rental import app, db
 from boat_rental.generator import generate_data
 from boat_rental.models import (
+    AVAILABILITY_AVAILABLE,
     Office,
     Client,
     Boat,
     Rental,
-    Yacht,
-    Motorboat,
-    Catamaran,
     Employee,
     Staff,
     Manager
@@ -38,6 +37,15 @@ def sign_in(role, payload):
 
         case _:
             raise ValueError(f"Unknown role: {role}")
+
+def sign_out():
+    """Drop both role keys, leaving the rest of the session intact.
+
+    Deliberately not session.clear() -- that would also drop `data_generated`,
+    and the seed button would come back every time someone logs out.
+    """
+    for key in EXCLUSIVE_SESSION_KEYS:
+        session.pop(key, None)
 
 def manager_required(f):
     @wraps(f)
@@ -68,7 +76,7 @@ def login():
 
 @app.route("/logout")
 def logout():
-    session.pop("client", None)
+    sign_out()
     flash("Logged out.", "success")
     return redirect(url_for("login"))
 
@@ -77,26 +85,31 @@ def logout():
 def select_client(client_id):
     client = Client.query.get(client_id)
 
-    if client:
-        sign_in('client',
-                {
-                    "ClientID": client.ClientID,
-                    "FirstName": client.FirstName,
-                    "LastName": client.LastName,
-                    "FullName": client.full_name,
-                    "Email": client.Email,
-                }
-            )
+    if not client:
+        flash(f"Unknown client {client_id}.", "error")
+        return redirect(url_for("login"))
+
+    sign_in('client',
+            {
+                "ClientID":  client.ClientID,
+                "FirstName": client.FirstName,
+                "LastName":  client.LastName,
+                "FullName":  client.full_name,
+                "Email":     client.Email,
+            }
+        )
     return redirect(url_for("home"))
 
 
 @app.route("/home")
 def home():
-    if "client" not in session and "manager" not in session:
+    if "manager" in session:
+        return redirect(url_for("list_employees"))
+
+    if "client" not in session:
         return redirect(url_for("login"))
 
-    client = session.get("client")
-    return render_template("home.html", client=client)
+    return render_template("home.html", client=session["client"])
 
 
 @app.route("/booking", methods=["GET", "POST"])
@@ -111,21 +124,27 @@ def booking():
     rental_days = 0
 
     if request.method == "POST" and request.form.get("book"):
-        print("DEBUG: Booking form submitted")
-        book_rental()
-        return redirect(url_for("report"))
-    elif search_form.validate_on_submit():
-        booking_form, search_params, available_boats = handle_search_form_submission(
-            search_form
+        search_params = parse_search_params(
+            request.form, "rental_date", "rental_end_date"
         )
-    elif request.method == "GET" and request.form.get("city"):
-        booking_form, search_params, available_boats = handle_get_search(search_form)
+        if search_params and attempt_booking(search_params):
+            return redirect(url_for("report"))
+    elif search_form.validate_on_submit():
+        search_params = {
+            "city": search_form.city.data,
+            "start_date": search_form.start_date.data,
+            "end_date": search_form.end_date.data,
+        }
+    elif request.method == "GET" and request.args.get("city"):
+        search_params = parse_search_params(request.args)
+        if search_params:
+            search_form.city.data = search_params["city"]
+            search_form.start_date.data = search_params["start_date"]
+            search_form.end_date.data = search_params["end_date"]
 
-    if (
-        search_params
-        and search_params.get("start_date")
-        and search_params.get("end_date")
-    ):
+    if search_params:
+        available_boats = get_available_boats(**search_params)
+        booking_form = build_booking_form(search_params, available_boats)
         rental_days = (search_params["end_date"] - search_params["start_date"]).days
 
     return render_template(
@@ -156,45 +175,27 @@ def analytics():
     if "client" not in session:
         return redirect(url_for("login"))
 
-    filtered_city = request.args.get("city", "Dubrovnik")
-    start_date_str = request.args.get("start_date", "2025-07-01")
-    end_date_str = request.args.get("end_date", "2025-07-05")
     offices = Office.query.all()
+    filtered_city = request.args.get("city") or "Dubrovnik"
 
-    start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-    end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+    default_start = date.today()
+    default_end = default_start + timedelta(days=7)
+    start_date = parse_date_arg("start_date", default_start)
+    end_date = parse_date_arg("end_date", default_end)
 
-    available_boats = (
-        db.session.query(Boat, Office)
-        .select_from(Boat)
-        .join(Office, Boat.OfficeID == Office.OfficeID)
-        .filter(Office.City == filtered_city)
-        .filter(Boat.AvailabilityStatus == "Available")
-        .outerjoin(
-            Rental,
-            db.and_(
-                Rental.BoatID == Boat.BoatID,
-                Rental.RentalDate < end_date,
-                Rental.RentalEndDate > start_date,
-            ),
-        )
-        .filter(Rental.BoatID.is_(None))
-        .all()
-    )
+    if end_date <= start_date:
+        flash("End date must be after start date — showing the default range.", "warning")
+        start_date, end_date = default_start, default_end
+
+    available_boats = get_available_boats(filtered_city, start_date, end_date)
 
     total_boats = Boat.query.count()
-    available_count = Boat.query.filter_by(AvailabilityStatus="Available").count()
+    available_count = Boat.query.filter_by(
+        AvailabilityStatus=AVAILABILITY_AVAILABLE
+    ).count()
     rentals_in_period = (
         db.session.query(Rental)
-        .filter(
-            or_(
-                and_(Rental.RentalDate >= start_date, Rental.RentalDate < end_date),
-                and_(
-                    Rental.RentalEndDate > start_date, Rental.RentalEndDate <= end_date
-                ),
-                and_(Rental.RentalDate <= start_date, Rental.RentalEndDate >= end_date),
-            )
-        )
+        .filter(rental_overlap_filter(start_date, end_date))
         .count()
     )
     period_days = (end_date - start_date).days
@@ -215,122 +216,164 @@ def analytics():
 
 @app.route("/generate-data", methods=["POST"])
 def reset_data():
-    generate_data()
+    """Seed the demo data once per browser session.
+
+    The button that posts here is offered to anonymous visitors, so the
+    one-shot guard is the session flag below rather than a role check: once
+    this browser has generated the data, the button is gone and a replayed
+    POST is refused. Nothing stops a fresh session from wiping the DB again --
+    that is acceptable for a demo app with no passwords.
+    """
+    if session.get("data_generated"):
+        flash("Demo data has already been generated.", "warning")
+        return redirect(url_for("login"))
+
+    try:
+        generate_data()
+    except Exception:
+        app.logger.exception("Data generation failed")
+        flash("Could not generate the demo data.", "error")
+        return redirect(url_for("login"))
+
+    # generate_data() deletes the clients and managers a signed-in visitor
+    # would be pointing at, so drop the role keys.
+    sign_out()
+    session["data_generated"] = True
+    flash("Demo data generated. Please sign in.", "success")
     return redirect(url_for("login"))
 
 
-def book_rental():
-    print("DEBUG: book_rental called")
-    print(f"DEBUG: Form data: {dict(request.form)}")
+def attempt_booking(params):
+    """Validate a booking POST against live availability and store the rental.
 
-    boat_id = request.form.get("boat_id")
-    rental_date = request.form.get("rental_date")
-    rental_end_date = request.form.get("rental_end_date")
+    Returns True only if the rental was written. Everything the browser sends
+    is untrusted here: boat_id is a <select> and both dates are hidden fields,
+    all of which can be edited before submission. So rather than trusting the
+    list of boats the client was originally shown, this re-derives what is
+    bookable right now and validates the choice against that.
+    """
+    if params["start_date"] < date.today():
+        flash("Rental start date cannot be in the past.", "error")
+        return False
 
-    print(
-        f"DEBUG: boat_id={boat_id}, rental_date={rental_date}, rental_end_date={rental_end_date}"
-    )
+    available_boats = get_available_boats(**params)
+    form = BoatSelectionForm(available_boats=available_boats, formdata=request.form)
+    if not form.validate_on_submit():
+        flash("That boat is not available for those dates. Please search again.", "error")
+        return False
 
-    if not boat_id or not rental_date or not rental_end_date:
-        flash("Missing booking information", "error")
-        return
+    boat_id = form.boat_id.data
+
+    if rental_conflicts(boat_id, params["start_date"], params["end_date"]):
+        flash(f"Boat {boat_id} was just booked by someone else.", "error")
+        return False
 
     try:
-        rental = Rental(
-            ClientID=session.get("client").get("ClientID"),
-            BoatID=boat_id,
-            RentalDate=datetime.strptime(rental_date, "%Y-%m-%d").date(),
-            RentalEndDate=datetime.strptime(rental_end_date, "%Y-%m-%d").date(),
-            PaymentStatus="UNPAID",
+        db.session.add(
+            Rental(
+                ClientID=session["client"]["ClientID"],
+                BoatID=boat_id,
+                RentalDate=params["start_date"],
+                RentalEndDate=params["end_date"],
+                PaymentStatus="UNPAID",
+            )
         )
-        db.session.add(rental)
         db.session.commit()
-        print(f"DEBUG: Rental saved successfully")
-        flash(f"Boat {boat_id} successfully booked!", "success")
-    except Exception as e:
-        print(f"DEBUG: Error saving rental: {e}")
+    except IntegrityError:
         db.session.rollback()
-        flash(f"Error booking boat: {str(e)}", "error")
+        flash("You have already booked this boat for that start date.", "error")
+        return False
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to store rental for boat %s", boat_id)
+        flash("Could not complete the booking. Please try again.", "error")
+        return False
+
+    flash(f"Boat {boat_id} successfully booked!", "success")
+    return True
+
+
+def parse_date_arg(name, fallback):
+    """Read a YYYY-MM-DD query-string argument, falling back on bad input."""
+    raw = request.args.get(name)
+    if not raw:
+        return fallback
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        flash(f"Ignoring invalid {name.replace('_', ' ')}: {raw!r}.", "warning")
+        return fallback
+
+
+def parse_search_params(source, start_key="start_date", end_key="end_date"):
+    """Extract city/start/end from a form or query-string mapping.
+
+    Returns {} and flashes on anything malformed, so callers never have to
+    handle a ValueError from strptime.
+    """
+    city = (source.get("city") or "").strip()
+    try:
+        start_date = datetime.strptime(source.get(start_key, ""), "%Y-%m-%d").date()
+        end_date = datetime.strptime(source.get(end_key, ""), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        flash("Invalid search parameters.", "error")
+        return {}
+
+    if not city or end_date <= start_date:
+        flash("Invalid search parameters.", "error")
+        return {}
+
+    return {"city": city, "start_date": start_date, "end_date": end_date}
+
+
+def build_booking_form(search_params, available_boats):
+    """Booking form pre-filled with the searched dates, or None if nothing is free."""
+    if not available_boats:
+        return None
+
+    form = BoatSelectionForm(available_boats=available_boats, formdata=None)
+    form.city.data = search_params["city"]
+    form.rental_date.data = search_params["start_date"].strftime("%Y-%m-%d")
+    form.rental_end_date.data = search_params["end_date"].strftime("%Y-%m-%d")
+    return form
+
+
+def rental_overlap_filter(start_date, end_date):
+    """Rentals overlapping the half-open interval [start_date, end_date).
+
+    A rental whose RentalEndDate is NULL is open-ended and blocks the boat from
+    its start date onwards.
+    """
+    return and_(
+        Rental.RentalDate < end_date,
+        or_(Rental.RentalEndDate.is_(None), Rental.RentalEndDate > start_date),
+    )
+
+
+def rental_conflicts(boat_id, start_date, end_date):
+    return db.session.query(
+        db.session.query(Rental)
+        .filter(Rental.BoatID == boat_id)
+        .filter(rental_overlap_filter(start_date, end_date))
+        .exists()
+    ).scalar()
 
 
 def get_available_boats(city, start_date, end_date):
     conflicting_rentals = select(Rental.BoatID).filter(
-        or_(
-            and_(Rental.RentalDate >= start_date, Rental.RentalDate < end_date),
-            and_(Rental.RentalEndDate > start_date, Rental.RentalEndDate <= end_date),
-            and_(Rental.RentalDate <= start_date, Rental.RentalEndDate >= end_date),
-        )
+        rental_overlap_filter(start_date, end_date)
     )
 
-    available_boats = (
+    return (
         db.session.query(Boat, Office)
         .select_from(Boat)
         .join(Office, Boat.OfficeID == Office.OfficeID)
         .filter(Office.City == city)
-        .filter(Boat.AvailabilityStatus == "AVAILABLE")
+        .filter(Boat.AvailabilityStatus == AVAILABILITY_AVAILABLE)
         .filter(~Boat.BoatID.in_(conflicting_rentals))
         .order_by(Boat.Manufacturer, Boat.BoatID)
         .all()
     )
-
-    return available_boats
-
-
-def handle_search_form_submission(search_form):
-    search_params = {
-        "city": search_form.city.data,
-        "start_date": search_form.start_date.data,
-        "end_date": search_form.end_date.data,
-    }
-    available_boats = get_available_boats(
-        search_params["city"], search_params["start_date"], search_params["end_date"]
-    )
-
-    if available_boats:
-        booking_form = BoatSelectionForm(available_boats=available_boats)
-        booking_form.rental_date.data = search_params["start_date"].strftime("%Y-%m-%d")
-        booking_form.rental_end_date.data = search_params["end_date"].strftime(
-            "%Y-%m-%d"
-        )
-
-    return booking_form, search_params, available_boats
-
-
-def handle_get_search(search_form):
-    try:
-        booking_form = None
-        search_params = {
-            "city": request.args.get("city"),
-            "start_date": datetime.strptime(
-                request.args.get("start_date"), "%Y-%m-%d"
-            ).date(),
-            "end_date": datetime.strptime(
-                request.args.get("end_date"), "%Y-%m-%d"
-            ).date(),
-        }
-        search_form.city.data = search_params["city"]
-        search_form.start_date.data = search_params["start_date"]
-        search_form.end_date.data = search_params["end_date"]
-
-        available_boats = get_available_boats(
-            search_params["city"],
-            search_params["start_date"],
-            search_params["end_date"],
-        )
-
-        if available_boats:
-            booking_form = BoatSelectionForm(available_boats=available_boats)
-            booking_form.rental_date.data = search_params["start_date"].strftime(
-                "%Y-%m-%d"
-            )
-            booking_form.rental_end_date.data = search_params["end_date"].strftime(
-                "%Y-%m-%d"
-            )
-
-        return booking_form, search_params, available_boats
-    except (ValueError, TypeError):
-        flash("Invalid search parameters.", "error")
-        return None, {}, []
 
 
 @app.route("/manager/login", methods=["GET", "POST"])
@@ -345,11 +388,11 @@ def manager_login():
             m, e = selected
             sign_in('manager',
                     {
-                        'ManagerID': m.ManagerID,
+                        'ManagerID':  m.ManagerID,
                         'EmployeeID': e.EmployeeID,
-                        'FirstName': e.FirstName,
-                        'LastName': e.LastName,
-                        'FullName': f"{e.FirstName} {e.LastName}"
+                        'FirstName':  e.FirstName,
+                        'LastName':   e.LastName,
+                        'FullName':   f"{e.FirstName} {e.LastName}"
                     }
             )
             flash(f"Logged in as manager {e.FirstName} {e.LastName}.", "success")
@@ -382,7 +425,7 @@ def hire_employee():
     form.supervisor_id.choices = [("", "— None —")] + [(m.ManagerID, f"{e.FirstName} {e.LastName}") for m, e in mgrs]
 
     if form.validate_on_submit():
-        emp_id = f"E{int(datetime.utcnow().timestamp())}"
+        emp_id = f"E{uuid4().hex[:8]}"
         try:
             employee = Employee(
                 EmployeeID=emp_id,
@@ -425,7 +468,10 @@ def edit_employee(emp_id):
     is_staff = Staff.query.get(emp_id) is not None
     is_manager = Manager.query.get(emp_id) is not None
 
-    form = EmployeeEditForm(obj=employee)
+    # obj= is deliberately not passed: the model attributes are FirstName /
+    # LastName while the form fields are first_name / last_name, so it matched
+    # nothing. The GET block below populates the form explicitly.
+    form = EmployeeEditForm()
     form.office_id.choices = [(o.OfficeID, f"{o.City} ({o.OfficeID})") for o in Office.query.order_by(Office.City).all()]
     mgrs = db.session.query(Manager, Employee).join(Employee, Manager.ManagerID == Employee.EmployeeID).filter(Manager.ManagerID != emp_id).order_by(Employee.LastName).all()
     form.supervisor_id.choices = [("", "— None —")] + [(m.ManagerID, f"{e.FirstName} {e.LastName}") for m, e in mgrs]
@@ -458,6 +504,14 @@ def edit_employee(emp_id):
             form.supervisor_id.data = m.SupervisorID or ""
 
     if form.validate_on_submit():
+        if (
+            is_manager
+            and form.role.data == "staff"
+            and emp_id == session.get("manager", {}).get("EmployeeID")
+        ):
+            flash("You cannot demote the manager you are signed in as.", "error")
+            return render_template("employee_edit.html", form=form, employee=employee)
+
         try:
             employee.OfficeID = form.office_id.data
             employee.FirstName = form.first_name.data
@@ -473,26 +527,26 @@ def edit_employee(emp_id):
             employee.Salary = form.salary.data
 
             if form.role.data == "staff":
-                if not is_staff:
-                    if is_manager:
-                        Manager.query.filter_by(ManagerID=emp_id).delete()
-                    db.session.add(Staff(StaffID=emp_id, WorkShift=form.work_shift.data or "Day", IsOnDuty=bool(form.is_on_duty.data)))
-                else:
+                if is_manager:
+                    detach_manager_links(emp_id)
+                    Manager.query.filter_by(ManagerID=emp_id).delete()
+                if is_staff:
                     s = Staff.query.get(emp_id)
                     s.WorkShift = form.work_shift.data or "Day"
                     s.IsOnDuty = bool(form.is_on_duty.data)
-                Manager.query.filter_by(ManagerID=emp_id).delete()
-            else:
-                if not is_manager:
-                    if is_staff:
-                        Staff.query.filter_by(StaffID=emp_id).delete()
-                    db.session.add(Manager(ManagerID=emp_id, Department=form.department.data or None, ManagementLevel=form.management_level.data or None, SupervisorID=form.supervisor_id.data or None))
                 else:
+                    db.session.add(Staff(StaffID=emp_id, WorkShift=form.work_shift.data or "Day", IsOnDuty=bool(form.is_on_duty.data)))
+            else:
+                if is_staff:
+                    detach_staff_links(emp_id)
+                    Staff.query.filter_by(StaffID=emp_id).delete()
+                if is_manager:
                     m = Manager.query.get(emp_id)
                     m.Department = form.department.data or None
                     m.ManagementLevel = form.management_level.data or None
                     m.SupervisorID = form.supervisor_id.data or None
-                Staff.query.filter_by(StaffID=emp_id).delete()
+                else:
+                    db.session.add(Manager(ManagerID=emp_id, Department=form.department.data or None, ManagementLevel=form.management_level.data or None, SupervisorID=form.supervisor_id.data or None))
 
             db.session.commit()
             flash("Employee updated.", "success")
@@ -510,15 +564,55 @@ def edit_employee(emp_id):
 @manager_required
 def delete_employee(emp_id):
     form = ConfirmDeleteForm()
-    if form.validate_on_submit():
-        try:
-            Staff.query.filter_by(StaffID=emp_id).delete()
-            Manager.query.filter_by(ManagerID=emp_id).delete()
-            emp = Employee.query.get_or_404(emp_id)
-            db.session.delete(emp)
-            db.session.commit()
-            flash("Employee deleted.", "success")
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Delete failed: {e}", "error")
+    if not form.validate_on_submit():
+        flash("Invalid delete request.", "error")
+        return redirect(url_for("list_employees"))
+
+    if emp_id == session.get("manager", {}).get("EmployeeID"):
+        flash("You cannot delete the employee you are signed in as.", "error")
+        return redirect(url_for("list_employees"))
+
+    employee = Employee.query.get_or_404(emp_id)
+
+    try:
+        detach_staff_links(emp_id)
+        detach_manager_links(emp_id)
+        Staff.query.filter_by(StaffID=emp_id).delete()
+        Manager.query.filter_by(ManagerID=emp_id).delete()
+        db.session.delete(employee)
+        db.session.commit()
+        flash("Employee deleted.", "success")
+    except IntegrityError:
+        db.session.rollback()
+        flash("Cannot delete this employee — other records still reference them.", "error")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to delete employee %s", emp_id)
+        flash("Delete failed.", "error")
+
     return redirect(url_for("list_employees"))
+
+
+def detach_manager_links(emp_id):
+    """Clear the references that block removing a Manager row.
+
+    Supervises and Maintains have no SQLAlchemy models, so they are reached
+    with raw SQL — same approach as generator.generate_data().
+    """
+    db.session.execute(
+        text("UPDATE `Manager` SET `SupervisorID` = NULL WHERE `SupervisorID` = :id"),
+        {"id": emp_id},
+    )
+    db.session.execute(
+        text("DELETE FROM `Supervises` WHERE `ManagerID` = :id"), {"id": emp_id}
+    )
+
+
+def detach_staff_links(emp_id):
+    """Clear the references that block removing a Staff row."""
+    db.session.execute(
+        text("DELETE FROM `Supervises` WHERE `StaffID` = :id"), {"id": emp_id}
+    )
+    db.session.execute(
+        text("DELETE FROM `Maintains` WHERE `StaffID` = :id"), {"id": emp_id}
+    )

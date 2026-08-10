@@ -1,10 +1,13 @@
 import random
-from datetime import datetime, timedelta, date
+from datetime import timedelta, date
+from flask import current_app
 from sqlalchemy import text
 
 from boat_rental import db
 
 from boat_rental.models import (
+    AVAILABILITY_AVAILABLE,
+    AVAILABILITY_MAINTENANCE,
     Office,
     Client,
     Boat,
@@ -86,12 +89,13 @@ def generate_data():
         do_clients()
         do_boats(offices)
         do_rentals()
+        do_assignments()
 
         db.session.commit()
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        print("generate_data failed:", e)
+        current_app.logger.exception("generate_data failed")
         raise
 
 
@@ -144,7 +148,7 @@ def do_clients():
 
 def do_boats(offices):
     boat_type = ["yacht", "motorboat", "catamaran"]
-    availability_status = ["Available", "Maintenance"]
+    availability_status = [AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE]
 
     for i in range(100):
         boat = Boat(
@@ -184,24 +188,36 @@ def do_boats(offices):
 
 
 def do_rentals():
+    db.session.flush()
     clients = Client.query.all()
-    boats = Boat.query.filter_by(AvailabilityStatus="Available").all()
+    boats = Boat.query.filter_by(AvailabilityStatus=AVAILABILITY_AVAILABLE).all()
 
-    for i in range(10):
-        rental_date = date.today() + timedelta(days=random.randint(-30, 30))
-        rental_end_date = rental_date + timedelta(days=random.randint(1, 14))
-        rental = Rental(
-            ClientID=random.choice(clients).ClientID,
-            BoatID=random.choice(boats).BoatID,
-            RentalDate=rental_date,
-            RentalEndDate=rental_end_date,
-            PaymentStatus=random.choice(["PAID", "UNPAID", "PENDING"]),
+    if not clients or not boats:
+        current_app.logger.warning(
+            "Skipping rental generation: %d clients, %d available boats",
+            len(clients),
+            len(boats),
         )
-        try:
-            db.session.add(rental)
-            db.session.commit()
-        except Exception as e:
-            db.session.rollback()
+        return
+
+    seen = set()
+    for _ in range(10):
+        client_id = random.choice(clients).ClientID
+        boat_id = random.choice(boats).BoatID
+        rental_date = date.today() + timedelta(days=random.randint(-30, 30))
+        if (client_id, boat_id, rental_date) in seen:
+            continue
+        seen.add((client_id, boat_id, rental_date))
+
+        db.session.add(
+            Rental(
+                ClientID=client_id,
+                BoatID=boat_id,
+                RentalDate=rental_date,
+                RentalEndDate=rental_date + timedelta(days=random.randint(1, 14)),
+                PaymentStatus=random.choice(["PAID", "UNPAID", "PENDING"]),
+            )
+        )
 
 
 def do_employees(offices):
@@ -276,4 +292,35 @@ def do_employees(offices):
         for m in managers[1:]:
             m.SupervisorID = sup_id
 
-    db.session.commit()
+    db.session.flush()
+
+
+def do_assignments():
+    """Populate the two m:n relations from the ER model.
+
+    generate_data() wipes Supervises and Maintains but nothing used to refill
+    them, so they stayed permanently empty after any reset. Neither table has
+    a SQLAlchemy model, hence the raw SQL.
+    """
+    db.session.flush()
+    staff_ids = [s.StaffID for s in Staff.query.all()]
+    manager_ids = [m.ManagerID for m in Manager.query.all()]
+    boat_ids = [b.BoatID for b in Boat.query.all()]
+
+    if not (staff_ids and manager_ids and boat_ids):
+        return
+
+    for staff_id in staff_ids:
+        db.session.execute(
+            text(
+                "INSERT INTO `Supervises` (`ManagerID`, `StaffID`) VALUES (:m, :s)"
+            ),
+            {"m": random.choice(manager_ids), "s": staff_id},
+        )
+        # random.sample yields distinct boats and each staff id is visited
+        # once, so (StaffID, BoatID) pairs are unique by construction.
+        for boat_id in random.sample(boat_ids, min(3, len(boat_ids))):
+            db.session.execute(
+                text("INSERT INTO `Maintains` (`StaffID`, `BoatID`) VALUES (:s, :b)"),
+                {"s": staff_id, "b": boat_id},
+            )

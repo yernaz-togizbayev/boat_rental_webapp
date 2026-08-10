@@ -1,5 +1,12 @@
 from boat_rental import db
 
+# Boat.AvailabilityStatus values. Kept as constants because the SQL seed data
+# and the generator both write these exact strings; comparing against a
+# different casing only worked by accident under MariaDB's case-insensitive
+# default collation.
+AVAILABILITY_AVAILABLE = "Available"
+AVAILABILITY_MAINTENANCE = "Maintenance"
+
 
 class Office(db.Model):
     __tablename__ = "Office"

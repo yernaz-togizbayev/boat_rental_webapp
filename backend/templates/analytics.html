@@ -5,17 +5,6 @@
     <h2>Analytics report</h2>
     <p class="text-muted">Available boats by city and date range</p>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ 'danger' if category == 'error' else 'warning' if category == 'warning' else 'success' }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
     <div class="card mb-4">
         <div class="card-header">
             <h5>Filter options</h5>
@@ -123,9 +112,9 @@
                         <tr>
                             <td><strong>{{ boat.BoatID }}</strong></td>
                             <td>{{ boat.Manufacturer }}</td>
-                            <td>{{ "%.1f"|format(boat.Length) }}</td>
+                            <td>{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</td>
                             <td>{{ boat.Seats }}</td>
-                            <td>{{ "%.0f"|format(boat.Weight) }}</td>
+                            <td>{{ "%.0f"|format(boat.Weight) if boat.Weight is not none else "—" }}</td>
                             <td>{{ boat.Horsepower }} HP</td>
                             <td>
                                 {% if boat.yacht %}

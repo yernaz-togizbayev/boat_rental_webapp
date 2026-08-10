@@ -11,12 +11,19 @@ services:
       - "3306:3306"
     volumes:
       - ./database:/docker-entrypoint-initdb.d/
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   backend:
     build: ./backend
     restart: always
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
       - "5000:5000"
     environment:
@@ -25,5 +32,6 @@ services:
       DB_NAME: boatdb
       DB_USER: user
       DB_PASSWORD: pass
+      SECRET_KEY: dev
     volumes:
       - ./backend/:/app
