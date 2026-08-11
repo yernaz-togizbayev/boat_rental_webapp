@@ -44,6 +44,7 @@
                 <a class="nav-item nav-link {{ 'is-current' if request.endpoint in ['list_employees', 'hire_employee', 'edit_employee'] }}" href="{{ url_for('list_employees') }}">Employees</a>
                 <a class="nav-item nav-link {{ 'is-current' if request.endpoint in ['list_offices', 'new_office', 'edit_office'] }}" href="{{ url_for('list_offices') }}">Cities</a>
                 <a class="nav-item nav-link {{ 'is-current' if request.endpoint in ['list_boats', 'new_boat', 'edit_boat'] }}" href="{{ url_for('list_boats') }}">Fleet</a>
+                <a class="nav-item nav-link {{ 'is-current' if request.endpoint == 'list_rentals' }}" href="{{ url_for('list_rentals') }}">Rentals</a>
                 <a class="nav-item nav-link {{ 'is-current' if request.endpoint == 'supervision_assignments' }}" href="{{ url_for('supervision_assignments') }}">Supervision</a>
                 <a class="nav-item nav-link {{ 'is-current' if request.endpoint == 'maintenance_assignments' }}" href="{{ url_for('maintenance_assignments') }}">Maintenance</a>
               {% elif session.client %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="page-head">
+  <p class="eyebrow">Charters</p>
+  <h1>Rentals</h1>
+  <p>Every booking across the fleet. Cancel one here if weather or a breakdown
+     takes the boat out — the client keeps no hold on it afterwards.</p>
+</div>
+
+<div class="card filter-card">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label for="city" class="form-label">Harbour</label>
+        <select name="city" id="city" class="form-select">
+          <option value="">All harbours</option>
+          {% for c in cities %}
+          <option value="{{ c }}" {% if c == current_filter %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Filter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="content-section rise">
+  {% if rows %}
+  <div class="table-responsive">
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Boat</th>
+          <th>Harbour</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Stage</th>
+          <th>Payment</th>
+          <th style="width:120px">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rental, client, boat, office in rows %}
+        {% set finished = rental.RentalEndDate and rental.RentalEndDate < today %}
+        {% set under_way = not finished and rental.RentalDate <= today %}
+        <tr>
+          <td>{{ client.FirstName }} {{ client.LastName }}</td>
+          <td><span class="num">{{ rental.BoatID }}</span> · {{ boat.Manufacturer }}</td>
+          <td>{{ office.City }}</td>
+          <td><span class="num">{{ rental.RentalDate.strftime('%Y-%m-%d') }}</span></td>
+          <td><span class="num">{{ rental.RentalEndDate.strftime('%Y-%m-%d') if rental.RentalEndDate else "—" }}</span></td>
+          <td>
+            {% if finished %}<span class="badge bg-secondary">Finished</span>
+            {% elif under_way %}<span class="badge bg-warning">Under way</span>
+            {% else %}<span class="badge bg-success">Upcoming</span>{% endif %}
+          </td>
+          <td>
+            <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
+              {{ rental.PaymentStatus }}
+            </span>
+          </td>
+          <td>
+            {% if finished %}
+            <span class="text-muted">On record</span>
+            {% else %}
+            <form method="post" style="display:inline"
+                  action="{{ url_for('cancel_rental_as_manager', client_id=rental.ClientID, boat_id=rental.BoatID, rental_date=rental.RentalDate.strftime('%Y-%m-%d')) }}"
+                  onsubmit="return confirm('Cancel {{ boat.Manufacturer }} ({{ rental.BoatID }}) for {{ client.FirstName }} {{ client.LastName }}{% if under_way %} — this charter is already under way{% endif %}?')">
+              {{ delete_form.hidden_tag() }}
+              <input type="hidden" name="city" value="{{ current_filter }}">
+              <button class="btn btn-sm btn-outline-danger">Cancel</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info mb-0">
+    <h4>No rentals{{ " in " ~ current_filter if current_filter }}</h4>
+    <p>{% if current_filter %}Nothing is booked in {{ current_filter }}. Try another harbour or clear the filter.
+       {% else %}Nothing is booked across the fleet yet.{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

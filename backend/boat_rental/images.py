@@ -1,21 +1,3 @@
-"""Live photo lookup against the Wikipedia page-images API.
-
-Chosen over Unsplash because it needs no API key and no account: source.unsplash.com
-(the keyless endpoint most examples still use) was retired and now returns 503,
-and the real Unsplash/Pexels APIs would put a secret in the repo.
-
-Two rules this module must never break, because it runs while a page is
-rendering:
-
-1. It never raises. Every failure path returns {} and the template falls back
-   to a plain tinted panel. A slow network must not 500 the booking page.
-2. It makes exactly one HTTP request per page, batching every title into a
-   single query. One request per city would be five round trips per render.
-
-Set IMAGE_FETCH=off to disable entirely -- used by smoke_test.py so the suite
-stays hermetic and fast, and useful for demoing without a network.
-"""
-
 import json
 import os
 import re

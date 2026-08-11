@@ -1089,6 +1089,78 @@ def delete_boat(boat_id):
     return redirect(url_for("list_boats"))
 
 
+@app.route("/manager/rentals")
+@manager_required
+def list_rentals():
+    city = request.args.get("city") or ""
+
+    query = (
+        db.session.query(Rental, Client, Boat, Office)
+        .join(Client, Rental.ClientID == Client.ClientID)
+        .join(Boat, Rental.BoatID == Boat.BoatID)
+        .join(Office, Boat.OfficeID == Office.OfficeID)
+    )
+    if city:
+        query = query.filter(Office.City == city)
+
+    rows = query.order_by(Rental.RentalDate.desc(), Office.City).all()
+    cities = [c for (c,) in Office.query.with_entities(Office.City).distinct().order_by(Office.City)]
+
+    return render_template(
+        "rentals_list.html",
+        rows=rows,
+        cities=cities,
+        current_filter=city,
+        today=date.today(),
+        delete_form=ConfirmDeleteForm(),
+    )
+
+
+@app.route("/manager/rentals/<client_id>/<boat_id>/<rental_date>/delete", methods=["POST"])
+@manager_required
+def cancel_rental_as_manager(client_id, boat_id, rental_date):
+    """
+    Call off any client's charter.
+    """
+    form = ConfirmDeleteForm()
+    if not form.validate_on_submit():
+        flash("Invalid cancellation request.", "error")
+        return redirect(url_for("list_rentals"))
+
+    try:
+        start = datetime.strptime(rental_date, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Invalid rental date.", "error")
+        return redirect(url_for("list_rentals"))
+
+    rental = Rental.query.filter_by(
+        ClientID=client_id, BoatID=boat_id, RentalDate=start
+    ).first()
+
+    if rental is None:
+        flash("That rental no longer exists.", "warning")
+        return redirect(url_for("list_rentals"))
+
+    if rental.RentalEndDate and rental.RentalEndDate < date.today():
+        flash(
+            f"{boat_id} finished on {rental.RentalEndDate:%d %b %Y}. Completed charters "
+            "are kept as a record and cannot be removed here.",
+            "error",
+        )
+        return redirect(url_for("list_rentals"))
+
+    try:
+        db.session.delete(rental)
+        db.session.commit()
+        flash(f"Cancelled {boat_id} for {client_id} on {start:%d %b %Y}.", "success")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to cancel rental %s/%s/%s", client_id, boat_id, rental_date)
+        flash("Cancellation failed.", "error")
+
+    return redirect(url_for("list_rentals", city=request.form.get("city") or None))
+
+
 # =========================
 # Assignments (the two m:n relations)
 # =========================

@@ -525,6 +525,66 @@ def main():
             check("the rental survived the anonymous cancel",
                   Rental.query.filter_by(BoatID="B4", RentalDate=past).count() == 1)
 
+        # 13c. The office can call off anyone's charter, including one already
+        #      under way -- both things the client route deliberately refuses.
+        with app.test_client() as c:
+            as_manager(c, "M1")
+            body = c.get("/manager/rentals").get_data(as_text=True)
+            check("manager sees rentals across clients",
+                  "C1" in body or "Max" in body, body[:300])
+            check("manager rentals page shows the harbour",
+                  "Dubrovnik" in body, body[:300])
+
+            filtered = c.get("/manager/rentals?city=Nice").get_data(as_text=True)
+            check("manager rentals filter by city works",
+                  "No rentals in Nice" in filtered, filtered[:300])
+
+            # C2's rental, which C1 was refused in 13b.
+            c2_start = END + timedelta(days=10)
+            body = c.post(f"/manager/rentals/C2/B1/{c2_start.isoformat()}/delete",
+                          follow_redirects=True).get_data(as_text=True)
+            check("manager can cancel another client's rental",
+                  "Cancelled" in body, body[:300])
+            check("that rental is gone",
+                  Rental.query.filter_by(ClientID="C2", BoatID="B1",
+                                         RentalDate=c2_start).count() == 0)
+
+            # A charter under way: starts yesterday, ends next week. The client
+            # route refuses this; the office must be able to call it off.
+            live_start = date.today() - timedelta(days=1)
+            db.session.add(Rental(ClientID="C1", BoatID="B3", RentalDate=live_start,
+                                  RentalEndDate=date.today() + timedelta(days=7),
+                                  PaymentStatus="PAID"))
+            db.session.commit()
+            body = c.post(f"/manager/rentals/C1/B3/{live_start.isoformat()}/delete",
+                          follow_redirects=True).get_data(as_text=True)
+            check("manager can cancel a charter already under way",
+                  Rental.query.filter_by(BoatID="B3", RentalDate=live_start).count() == 0,
+                  body[:300])
+
+            # A finished charter is the record that it happened.
+            done_start = date.today() - timedelta(days=20)
+            db.session.add(Rental(ClientID="C1", BoatID="B3", RentalDate=done_start,
+                                  RentalEndDate=date.today() - timedelta(days=14),
+                                  PaymentStatus="PAID"))
+            db.session.commit()
+            body = c.post(f"/manager/rentals/C1/B3/{done_start.isoformat()}/delete",
+                          follow_redirects=True).get_data(as_text=True)
+            check("a finished charter cannot be deleted",
+                  "cannot be removed" in body, body[:300])
+            check("the finished charter survived",
+                  Rental.query.filter_by(BoatID="B3", RentalDate=done_start).count() == 1)
+
+            r = c.post("/manager/rentals/C1/B3/banana/delete", follow_redirects=True)
+            check("an unparseable manager cancel date does not 500",
+                  r.status_code == 200, f"status {r.status_code}")
+
+        with app.test_client() as c:
+            as_client(c, "C1")
+            r = c.get("/manager/rentals")
+            check("the rentals page is manager-only", r.status_code == 302,
+                  f"status {r.status_code}")
+
         # 14. Client self-registration. Runs before the generate-data section,
         #     which deletes every client.
         def registration(**overrides):
