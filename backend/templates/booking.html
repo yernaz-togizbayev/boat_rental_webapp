@@ -35,6 +35,44 @@
   </div>
 </div>
 
+{% if cities %}
+{# Harbour picker. Clicking a card fills the select above rather than
+   submitting, so the dates you already typed survive the choice. #}
+<div class="harbours rise">
+  {% for city in cities %}
+  <button type="button" class="harbour {{ 'is-picked' if city == search_params.city }}"
+          data-city="{{ city }}" aria-pressed="{{ 'true' if city == search_params.city else 'false' }}">
+    {% if city_images.get(city) %}
+      <img src="{{ city_images[city] }}" alt="" loading="lazy">
+    {% endif %}
+    <span class="harbour-label">{{ city }}</span>
+  </button>
+  {% endfor %}
+</div>
+{% if city_images or boat_type_images %}
+<p class="photo-credit">Harbour and boat photos from
+  <a href="https://commons.wikimedia.org/" rel="noopener">Wikimedia Commons</a>,
+  fetched live via the Wikipedia API.</p>
+{% endif %}
+
+<script>
+  // Harbour cards drive the select rather than replacing it: the select is
+  // what the server validates, so it stays the single source of truth.
+  document.querySelectorAll('.harbour').forEach(function (card) {
+    card.addEventListener('click', function () {
+      var select = document.querySelector('[name="city"]');
+      if (!select) return;
+      select.value = card.dataset.city;
+      document.querySelectorAll('.harbour').forEach(function (other) {
+        other.classList.toggle('is-picked', other === card);
+        other.setAttribute('aria-pressed', other === card ? 'true' : 'false');
+      });
+      select.focus();
+    });
+  });
+</script>
+{% endif %}
+
 {% if available_boats %}
 <div class="content-section rise">
   <div class="page-head">
@@ -55,7 +93,11 @@
   <div class="row g-3 mb-4">
     {% for boat, office in available_boats %}
     <div class="col-lg-4 col-md-6">
+      {% set kind = 'yacht' if boat.yacht else 'motorboat' if boat.motorboat else 'catamaran' if boat.catamaran else none %}
       <article class="spec-plate">
+        {% if kind and boat_type_images.get(kind) %}
+        <img class="plate-photo" src="{{ boat_type_images[kind] }}" alt="A {{ kind }}" loading="lazy">
+        {% endif %}
         <div class="plate-head">
           <span class="maker">{{ boat.Manufacturer }}</span>
           {% if boat.yacht %}<span class="badge bg-warning">Yacht</span>

@@ -20,6 +20,9 @@ os.environ.setdefault(
     "DATABASE_URL", "sqlite:///" + os.path.join(tempfile.mkdtemp(), "smoke.db")
 )
 os.environ["WTF_CSRF_ENABLED"] = "0"
+# No live photo lookups: the suite must pass offline and must not spend a
+# network round trip on every booking-page render.
+os.environ["IMAGE_FETCH"] = "off"
 
 from sqlalchemy import event, text  # noqa: E402
 from sqlalchemy.engine import Engine  # noqa: E402

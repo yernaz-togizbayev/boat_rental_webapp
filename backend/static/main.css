@@ -240,6 +240,73 @@ a:hover { color: var(--magenta); text-decoration-color: currentColor; }
   margin-top: .3rem;
 }
 
+/* Harbour picker: photographs are the one place this system goes pictorial,
+   because choosing between Santorini and Dubrovnik is a visual decision in a
+   way that reading a boat's horsepower is not. */
+.harbours {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: .6rem;
+  margin-bottom: 1.5rem;
+}
+.harbour {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  /* Tinted panel behind the photo — this is what shows if the lookup failed
+     or the image is still loading, so a card is never an empty hole. */
+  background: linear-gradient(160deg, var(--ink-soft), var(--ink));
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.harbour img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .72;
+  transition: opacity .25s ease, transform .35s cubic-bezier(.22, 1, .36, 1);
+}
+.harbour::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(10, 35, 51, .88) 8%, rgba(10, 35, 51, .1) 62%);
+}
+.harbour-label {
+  position: absolute;
+  left: .7rem;
+  right: .7rem;
+  bottom: .6rem;
+  z-index: 1;
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: #fff;
+  text-align: left;
+}
+.harbour:hover { border-color: var(--shallow-dp); transform: translateY(-2px); box-shadow: var(--shadow); }
+.harbour:hover img { opacity: .9; transform: scale(1.04); }
+.harbour.is-picked {
+  border-color: var(--magenta);
+  box-shadow: 0 0 0 2px rgba(200, 30, 100, .25);
+}
+.harbour.is-picked img { opacity: .95; }
+
+.photo-credit {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  color: var(--sound);
+  margin: -1rem 0 1.5rem;
+}
+
 /* Boat card = the spec plate bolted to a helm. Hairline isobath along the top. */
 .spec-plate {
   position: relative;
@@ -262,6 +329,16 @@ a:hover { color: var(--magenta); text-decoration-color: currentColor; }
   border-color: var(--shallow-dp);
   box-shadow: var(--shadow);
   transform: translateY(-2px);
+}
+/* One photo per boat *type*, not per hull — the boats are generated, so there
+   is no real vessel to picture. Kept to a band so the specs still lead. */
+.spec-plate .plate-photo {
+  display: block;
+  width: calc(100% + 2.5rem);
+  margin: -1.1rem -1.25rem .95rem;
+  height: 118px;
+  object-fit: cover;
+  background: var(--paper);
 }
 .spec-plate .plate-head {
   display: flex;
@@ -480,14 +557,43 @@ input[type="date"].form-control { font-family: var(--mono); font-size: var(--ste
   isolation: isolate;
   box-shadow: var(--shadow-lg);
 }
+/* Crossfading frame stack. Only .is-showing is visible; the fade is long and
+   the hold is 5s, so it reads as drift rather than a slideshow clicking over. */
+.chart-hero .hero-frames {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+}
 .chart-hero .hero-photo {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: .5;
-  z-index: -2;
+  opacity: 0;
+  transition: opacity 1.4s ease-in-out;
+}
+.chart-hero .hero-photo.is-showing { opacity: .5; }
+
+.chart-hero .hero-place {
+  position: absolute;
+  right: clamp(1rem, 3vw, 2rem);
+  bottom: clamp(1rem, 3vw, 1.75rem);
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: #9fbecb;
+}
+.chart-hero .hero-place:not(:empty)::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  margin-right: .5rem;
+  vertical-align: middle;
+  background: var(--magenta);
 }
 .chart-hero .hero-scrim {
   position: absolute;

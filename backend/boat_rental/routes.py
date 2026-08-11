@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm, OfficeForm, BoatForm, ClientRegistrationForm, SupervisesForm, MaintainsForm
 from boat_rental import app, db
-from boat_rental import assignments
+from boat_rental import assignments, images
 from boat_rental.assignments import (
     detach_boat_links,
     detach_manager_links,
@@ -174,7 +174,8 @@ def home():
     if "client" not in session:
         return redirect(url_for("login"))
 
-    return render_template("home.html", client=session["client"])
+    return render_template("home.html", client=session["client"],
+                           hero_slides=images.hero_slides())
 
 
 @app.route("/booking", methods=["GET", "POST"])
@@ -212,6 +213,9 @@ def booking():
         booking_form = build_booking_form(search_params, available_boats)
         rental_days = (search_params["end_date"] - search_params["start_date"]).days
 
+    cities = [c for (c,) in Office.query.with_entities(Office.City).distinct().order_by(Office.City)]
+    city_images, boat_type_images = images.city_and_boat_images(cities)
+
     return render_template(
         "booking.html",
         search_form=search_form,
@@ -219,6 +223,9 @@ def booking():
         available_boats=available_boats,
         search_params=search_params,
         rental_days=rental_days,
+        cities=cities,
+        city_images=city_images,
+        boat_type_images=boat_type_images,
     )
 
 
