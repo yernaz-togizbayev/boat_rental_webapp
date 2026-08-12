@@ -88,65 +88,79 @@
     </div>
   </div>
 
-  {# The sounding strip: a boat is its measurements, printed the way a chart
-     prints depths — the numeral carries, the unit is a caption. #}
-  <div class="row g-3 mb-4">
-    {% for boat, office in available_boats %}
-    <div class="col-lg-4 col-md-6">
-      {% set kind = 'yacht' if boat.yacht else 'motorboat' if boat.motorboat else 'catamaran' if boat.catamaran else none %}
-      <article class="spec-plate">
-        {% if kind and boat_type_images.get(kind) %}
-        <img class="plate-photo" src="{{ boat_type_images[kind] }}" alt="A {{ kind }}" loading="lazy">
-        {% endif %}
-        <div class="plate-head">
-          <span class="maker">{{ boat.Manufacturer }}</span>
-          {% if boat.yacht %}<span class="badge bg-warning">Yacht</span>
-          {% elif boat.motorboat %}<span class="badge bg-success">Motorboat</span>
-          {% elif boat.catamaran %}<span class="badge bg-primary">Catamaran</span>
-          {% else %}<span class="badge bg-secondary">Boat</span>{% endif %}
-        </div>
-        <div class="soundings">
-          <div class="sounding">
-            <span class="figure {{ 'is-null' if boat.Length is none }}">{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</span>
-            <span class="unit">LOA m</span>
-          </div>
-          <div class="sounding">
-            <span class="figure">{{ boat.Seats }}</span>
-            <span class="unit">Berths</span>
-          </div>
-          <div class="sounding">
-            <span class="figure">{{ boat.Horsepower }}</span>
-            <span class="unit">HP</span>
-          </div>
-        </div>
-        <div class="plate-head mt-3 mb-0">
-          <span class="hull-id">{{ boat.BoatID }}</span>
-          <span class="hull-id">{{ office.City }}</span>
-        </div>
-      </article>
-    </div>
-    {% endfor %}
-  </div>
-
   {% if booking_form %}
   <form method="post">
     {# hidden_tag() emits csrf_token plus the rental_date,
        rental_end_date and city hidden fields. #}
     {{ booking_form.hidden_tag() }}
-    <div class="row g-3 align-items-end">
-      <div class="col-md-8">
-        {{ booking_form.boat_id.label(class="form-label") }}
-        {{ booking_form.boat_id(class="form-select") }}
-        {% for error in booking_form.boat_id.errors %}<small class="text-danger">{{ error }}</small>{% endfor %}
+
+    {% for error in booking_form.boat_id.errors %}
+      <div class="alert alert-danger">{{ error }}</div>
+    {% endfor %}
+
+    {# Each card is a label wrapping a real radio, so picking a boat is one
+       click on the boat itself and needs no JavaScript. The name is still
+       boat_id, so BoatSelectionForm.pre_validate rejects a tampered value
+       exactly as it did when this was a <select>. #}
+    <fieldset class="plate-grid row g-3 mb-4">
+      <legend class="visually-hidden">Choose a boat</legend>
+      {% for boat, office in available_boats %}
+      <div class="col-lg-4 col-md-6">
+        {% set kind = 'yacht' if boat.yacht else 'motorboat' if boat.motorboat else 'catamaran' if boat.catamaran else none %}
+        <label class="spec-plate">
+          <input class="plate-radio" type="radio" name="boat_id" value="{{ boat.BoatID }}"
+                 {{ 'checked' if booking_form.boat_id.data == boat.BoatID }}>
+          {% if kind and boat_type_images.get(kind) %}
+          <img class="plate-photo" src="{{ boat_type_images[kind] }}" alt="A {{ kind }}" loading="lazy">
+          {% endif %}
+          <span class="plate-tick" aria-hidden="true">Selected</span>
+          <div class="plate-head">
+            <span class="maker">{{ boat.Manufacturer }}</span>
+            {% if boat.yacht %}<span class="badge bg-warning">Yacht</span>
+            {% elif boat.motorboat %}<span class="badge bg-success">Motorboat</span>
+            {% elif boat.catamaran %}<span class="badge bg-primary">Catamaran</span>
+            {% else %}<span class="badge bg-secondary">Boat</span>{% endif %}
+          </div>
+          <div class="soundings">
+            <div class="sounding">
+              <span class="figure {{ 'is-null' if boat.Length is none }}">{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</span>
+              <span class="unit">LOA m</span>
+            </div>
+            <div class="sounding">
+              <span class="figure">{{ boat.Seats }}</span>
+              <span class="unit">Berths</span>
+            </div>
+            <div class="sounding">
+              <span class="figure">{{ boat.Horsepower }}</span>
+              <span class="unit">HP</span>
+            </div>
+          </div>
+          <div class="plate-head mt-3 mb-0">
+            <span class="hull-id">{{ boat.BoatID }}</span>
+            <span class="hull-id">{{ office.City }}</span>
+          </div>
+        </label>
       </div>
-      <div class="col-md-4">
-        <button type="submit" name="book" value="true" class="btn btn-success w-100"
-                onclick="return confirm('Book selected boat for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}?')">
-          Book for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}
-        </button>
-      </div>
+      {% endfor %}
+    </fieldset>
+
+    <div class="book-bar">
+      <p class="book-hint">Pick a boat above, then book it.</p>
+      <button type="submit" name="book" value="true" class="btn btn-success btn-lg js-confirm"
+              data-confirm="Book this boat for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}?">
+        Book for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}
+      </button>
     </div>
   </form>
+  <script>
+    document.querySelectorAll('.js-confirm').forEach(function (btn) {
+      btn.addEventListener('click', function (event) {
+        if (!window.confirm(btn.dataset.confirm)) {
+          event.preventDefault();
+        }
+      });
+    });
+  </script>
   {% endif %}
 </div>
 

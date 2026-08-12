@@ -330,8 +330,74 @@ a:hover { color: var(--magenta); text-decoration-color: currentColor; }
   box-shadow: var(--shadow);
   transform: translateY(-2px);
 }
-/* One photo per boat *type*, not per hull — the boats are generated, so there
-   is no real vessel to picture. Kept to a band so the specs still lead. */
+
+fieldset.plate-grid { border: 0; padding: 0; min-inline-size: 0; }
+
+label.spec-plate { display: block; cursor: pointer; margin: 0; }
+
+.plate-radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.plate-tick {
+  position: absolute;
+  top: .6rem;
+  right: .6rem;
+  z-index: 1;
+  opacity: 0;
+  transform: translateY(-4px);
+  background: var(--magenta);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: .2rem .45rem;
+  border-radius: 3px;
+  transition: opacity .15s ease, transform .15s ease;
+}
+
+.plate-radio:checked ~ .plate-tick { opacity: 1; transform: none; }
+
+.spec-plate:has(.plate-radio:checked) {
+  border-color: var(--magenta);
+  box-shadow: 0 0 0 2px rgba(200, 30, 100, .22), var(--shadow);
+}
+.spec-plate:has(.plate-radio:checked)::before { background: var(--magenta); }
+
+.spec-plate:has(.plate-radio:focus-visible) {
+  outline: 2px solid var(--magenta);
+  outline-offset: 2px;
+}
+
+.book-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--hairline);
+  padding-top: 1.25rem;
+}
+.book-hint {
+  margin: 0 auto 0 0;
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--sound);
+}
+
+.plate-grid:has(.plate-radio:checked) ~ .book-bar .book-hint { visibility: hidden; }
+
 .spec-plate .plate-photo {
   display: block;
   width: calc(100% + 2.5rem);
