@@ -1,38 +1,79 @@
 import json
 import os
+import random
 import re
 import urllib.parse
 import urllib.request
+import zlib
 
 from flask import current_app
-
-ENDPOINT = "https://en.wikipedia.org/w/api.php"
 
 USER_AGENT = "IMSE-Group05-BoatRental/1.0 (university project; contact via repo)"
 
 TIMEOUT_SECONDS = 3
 
-CITY_ARTICLES = {
-    "Santorini": "Fira",
-    "Mykonos": "Church of Panagia Paraportiani",
+UNSPLASH_SEARCH = "https://api.unsplash.com/search/photos"
+
+WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
+
+
+def _unsplash(photo_id, width):
+    """Hotlinked Unsplash CDN URL. width is the CSS slot at 2x, for retina."""
+    return f"https://images.unsplash.com/photo-{photo_id}?w={width}&q=75&auto=format"
+
+
+BOAT_TYPE_IMAGES = {
+    # Marcin Ciszewski -- superyacht at anchor off a wooded shore
+    "yacht": _unsplash("1567899378494-47b22a2ae96a", 780),
+    # white cruising catamaran, both hulls broadside in turquoise water
+    "catamaran": _unsplash("1581272281570-61907217b302", 780),
+    # red sports cruiser under way, throwing spray
+    "motorboat": _unsplash("1584212893031-410e387fbaf1", 780),
 }
 
-# The boats are generated -- "Manufacturer4" is not a real builder, so there is
-# nothing to photograph per hull. One representative image per type is the
-# honest granularity. These three articles were picked because their lead image
-# is actually a charter-style vessel.
-BOAT_TYPE_ARTICLES = {
-    "yacht": "Yacht",
-    "catamaran": "Lagoon 380",
-    "motorboat": "Princess Yachts",
+# Cards for the harbours we have a photo of. The card is small, 4:3 and darkened
+# under a scrim, so these are wide coastal views rather than close-ups.
+CITY_IMAGES = {
+    "Mykonos": _unsplash("1601581875309-fafbf2d3ed3a", 600),    # Little Venice
+    "Nice": _unsplash("1503696967350-ad1874122058", 600),       # Baie des Anges
+    "Barcelona": _unsplash("1529551739587-e242c564f727", 600),  # Barceloneta
+    "Santorini": _unsplash("1580502304784-8985b7eb7260", 600),  # Oia, blue hour
+    "Dubrovnik": _unsplash("1414862625453-d87604a607e4", 600),  # old town harbour
+    "Amsterdam": _unsplash("1459679749680-18eb1eb37418", 600),  # Damrak canal
+    "Copenhagen": _unsplash("1550682837-891ae070f347", 600),    # Nyhavn
+    "Hamburg": _unsplash("1565167808479-08dcdbb1d6d7", 600),    # container port
+    "Stockholm": _unsplash("1667060306007-0e28bee8b8a9", 600),  # Riddarholmen
+    "Mallorca": _unsplash("1517670660212-61ed0b4fe8f9", 600),   # north-coast cove
+    "Madeira": _unsplash("1674333362725-84e9996aa6fb", 600),    # Funchal bay
+    "San Francisco": _unsplash("1758136692793-65ac5a91e06e", 600),  # the bay
+    "Tokyo": _unsplash("1628856860829-5daf4950cd63", 600),      # Rainbow Bridge
+    "Sant Antoni": _unsplash("1547668932-54be495edf50", 600),   # Ibiza moorings
 }
+
+# Last resort, when both lookups come back empty. A pool rather than one image
+# because a single default made every unlisted harbour look identical; these four
+# are deliberately unalike and show no known landmark.
+GENERIC_CITY_IMAGES = [
+    _unsplash("1517696522815-46a004b80a2d", 600),  # aerial yacht basin
+    _unsplash("1528580279421-f0b84f9d7640", 600),  # sailboats off a quay
+    _unsplash("1703728843356-515de7a3b134", 600),  # masts at sunset
+    _unsplash("1549045188-ea585b396e29", 600),     # pontoon rows
+]
+
+
+def _generic_city_image(city):
+    """A stable pool pick for a city we have no photo of.
+
+    crc32, not hash(): str hashing is salted per process, so the built-in would
+    hand the same city a different harbour on every worker and every restart.
+    """
+    return GENERIC_CITY_IMAGES[zlib.crc32(city.encode()) % len(GENERIC_CITY_IMAGES)]
 
 
 # A place article's lead image is very often a flag, a locator map or a coat of
 # arms rather than a photograph -- "Mallorca" resolves to Flag_of_Mallorca.svg.
-# Those are worse than nothing here, so they are dropped and the card falls back
-# to its tinted panel. Matched with separators so a real photo whose caption
-# happens to contain one of these words is not thrown away.
+# Matched with separators so a real photo whose filename happens to contain one
+# of these words is not thrown away.
 _NOT_A_PHOTO = re.compile(
     r"(^|[_\-.%28 ])("
     r"flag|flags|map|maps|locator|location|borders|outline|topographic|"
@@ -41,6 +82,14 @@ _NOT_A_PHOTO = re.compile(
     r")([_\-.%29 ]|$)",
     re.IGNORECASE,
 )
+
+# Anything squarer than this crops to a sliver in the 4:3 card.
+CARD_MIN_ASPECT = 1.3
+
+# city -> url or None, for this process. Both lookups are slow and the Unsplash
+# demo key allows only 50 requests an hour, so a miss is cached as hard as a hit:
+# without that, every page load re-asks about the same handful of cities.
+_RESOLVED = {}
 
 
 def _looks_like_a_photo(url):
@@ -51,29 +100,38 @@ def _looks_like_a_photo(url):
     return not _NOT_A_PHOTO.search(name)
 
 
-# The rotating hero pool. Mediterranean anchorages rather than generic "yacht"
-# stock: this is the coastline the fleet actually works, and every one of these
-# articles leads with a wide landscape photograph.
-HERO_ARTICLES = [
-    "Portofino", "Amalfi Coast", "Bay of Kotor", "Saint-Tropez", "Hvar",
-    "Cinque Terre", "Positano", "Bonifacio, Corse-du-Sud", "Porto Cervo",
-    "Costa Brava", "Cassis", "Split, Croatia",
-]
+def _search_unsplash(city, width):
+    """Top landscape Unsplash hit for a city, or None. Needs UNSPLASH_ACCESS_KEY."""
+    key = os.environ.get("UNSPLASH_ACCESS_KEY")
+    if not key:
+        return None
 
-# Anything squarer than this gets cropped to a letterbox sliver in the hero.
-HERO_MIN_ASPECT = 1.3
+    query = urllib.parse.urlencode({
+        "query": city,
+        "orientation": "landscape",
+        "content_filter": "high",
+        "per_page": 1,
+    })
+    request = urllib.request.Request(
+        f"{UNSPLASH_SEARCH}?{query}",
+        headers={"User-Agent": USER_AGENT,
+                 "Accept-Version": "v1",
+                 "Authorization": f"Client-ID {key}"},
+    )
+    with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        results = json.load(response).get("results") or []
+
+    if not results:
+        return None
+    # urls.raw carries its own query string, so our sizing params get appended.
+    return f"{results[0]['urls']['raw']}&w={width}&q=75&auto=format&fit=crop"
 
 
-def _enabled():
-    return os.environ.get("IMAGE_FETCH", "on").lower() not in ("off", "0", "false")
+def _search_wikipedia(cities, width):
+    """city -> lead-image URL, for the cities Wikipedia could resolve.
 
-
-def _fetch(titles, width, min_aspect=0):
-    """title -> thumbnail URL for whatever the API could resolve.
-
-    min_aspect drops portrait images. The API hands back the thumbnail's real
-    dimensions, so this is free -- and it matters for the hero, where a tall
-    photo gets cropped to a sliver of itself.
+    One request for the whole batch. The API hands back the thumbnail's real
+    dimensions, so dropping portrait images costs nothing.
     """
     query = urllib.parse.urlencode({
         "action": "query",
@@ -83,87 +141,133 @@ def _fetch(titles, width, min_aspect=0):
         "pithumbsize": width,
         "pilicense": "free",
         "redirects": 1,
-        "titles": "|".join(titles),
+        "titles": "|".join(dict.fromkeys(cities)),
     })
     request = urllib.request.Request(
-        f"{ENDPOINT}?{query}", headers={"User-Agent": USER_AGENT}
+        f"{WIKIPEDIA_API}?{query}", headers={"User-Agent": USER_AGENT}
     )
     with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
         payload = json.load(response)
 
-    found = {}
+    by_title = {}
     for page in payload.get("query", {}).get("pages", {}).values():
         thumb = page.get("thumbnail") or {}
         source, w, h = thumb.get("source"), thumb.get("width", 0), thumb.get("height", 1)
         if not source or not _looks_like_a_photo(source):
             continue
-        if min_aspect and (w / h if h else 0) < min_aspect:
+        if (w / h if h else 0) < CARD_MIN_ASPECT:
             continue
-        found[page["title"]] = source
+        by_title[page["title"]] = source
 
+    # A title we asked for may have been redirected before it was answered.
     for redirect in payload.get("query", {}).get("redirects", []):
-        if redirect["to"] in found:
-            found[redirect["from"]] = found[redirect["to"]]
+        if redirect["to"] in by_title:
+            by_title[redirect["from"]] = by_title[redirect["to"]]
+
+    return {c: by_title[c] for c in cities if c in by_title}
+
+
+def _resolve_unknown_cities(cities, width):
+    """city -> url for cities not in CITY_IMAGES. Never raises; may return {}.
+
+    Unsplash first because its photographs are the better ones, Wikipedia second
+    because it needs no key and has an article for cities Unsplash has never
+    heard of. Whatever neither finds falls through to the generic pool.
+    """
+    found, unresolved = {}, []
+    for city in cities:
+        if city in _RESOLVED:
+            if _RESOLVED[city]:
+                found[city] = _RESOLVED[city]
+            continue
+        try:
+            url = _search_unsplash(city, width)
+        except Exception:
+            current_app.logger.warning("Unsplash lookup failed for %s", city, exc_info=True)
+            url = None
+        if url:
+            _RESOLVED[city] = url
+            found[city] = url
+        else:
+            unresolved.append(city)
+
+    if unresolved:
+        try:
+            by_city = _search_wikipedia(unresolved, width)
+        except Exception:
+            current_app.logger.warning("Wikipedia lookup failed; using generic harbours",
+                                       exc_info=True)
+            by_city = {}
+        for city in unresolved:
+            _RESOLVED[city] = by_city.get(city)
+        found.update(by_city)
 
     return found
 
+# The hero pool: cruising grounds rather than generic yacht stock. All landscape
+# and all wide -- the hero band is roughly 5:2, so anything squarer crops to its
+# middle and anything with a big empty sky reads as a grey smear at 50% opacity.
+HERO_IMAGES = [
+    (_unsplash("1549893072-4bc678117f45", 1100), "Portofino"),
+    (_unsplash("1583844056361-4418a8f2a985", 1100), "Positano"),
+    (_unsplash("1700549586671-6d5868866337", 1100), "Bay of Kotor"),
+    (_unsplash("1627669867775-fce0b561dad4", 1100), "Saint-Tropez"),
+    (_unsplash("1616234643798-12dc87da67b4", 1100), "Cinque Terre"),
+    (_unsplash("1605703296515-515167084932", 1100), "Hvar"),
+    (_unsplash("1533656338503-b22f63e96cd8", 1100), "Amalfi Coast"),
+    (_unsplash("1696468330266-60f1a84f8d17", 1100), "Capri"),
+    (_unsplash("1726255988977-06023f676792", 1100), "Bodrum"),
+    (_unsplash("1571510168951-bc6189f2dfad", 1100), "Valletta"),
+    (_unsplash("1718255632182-f6e7bc73d08a", 1100), "Monaco"),
+    (_unsplash("1677182302564-ffc6bb3252cd", 1100), "Cannes"),
+    (_unsplash("1687469044048-d920c7c1bc04", 1100), "Bonifacio"),
+    (_unsplash("1612279427382-f8349a383af8", 1100), "Zakynthos"),
+    (_unsplash("1591899183619-d6944d90ef41", 1100), "Corfu"),
+    (_unsplash("1624138784614-87fd1b6528f8", 1100), "Sydney Harbour"),
+    (_unsplash("1643029891412-92f9a81a8c16", 1100), "Ha Long Bay"),
+    (_unsplash("1601439678777-b2b3c56fa627", 1100), "Geirangerfjord"),
+    (_unsplash("1582150050076-52baeeba4a74", 1100), "Lake Como"),
+    (_unsplash("1767045561413-dee34ebe9ade", 1100), "Palma de Mallorca"),
+    (_unsplash("1728363265942-92c2202b6596", 1100), "Perast"),
+    (_unsplash("1575540291670-8d3b26f7d327", 1100), "Split"),
+]
 
-def lookup(article_by_key, width=640, min_aspect=0):
-    """key -> image URL, for the keys that resolved. Never raises."""
-    if not article_by_key or not _enabled():
-        return {}
+# How many of the pool a single visit sees. The template loads them one at a
+# time to crossfade, so this bounds transfer, not first paint.
+HERO_SLIDE_COUNT = 22
 
-    try:
-        articles = list(dict.fromkeys(article_by_key.values()))[:50]
-        by_title = _fetch(articles, width, min_aspect)
-    except Exception:
-        current_app.logger.warning("Image lookup failed; falling back to placeholders",
-                                   exc_info=True)
-        return {}
 
-    return {
-        key: by_title[article]
-        for key, article in article_by_key.items()
-        if article in by_title
+def _enabled():
+    return os.environ.get("IMAGE_FETCH", "on").lower() not in ("off", "0", "false")
+
+
+def hero_slides():
+    """A fresh random handful of [(url, place)] for the rotating hero.
+
+    Sampled per render rather than fixed, so the pool is worth its size: a
+    returning visitor sees a different coastline instead of the same six.
+    """
+    if not _enabled():
+        return []
+    return random.sample(HERO_IMAGES, min(HERO_SLIDE_COUNT, len(HERO_IMAGES)))
+
+
+def city_and_boat_images(cities, width=600):
+    """Images for the harbour cards and the boat-type plates.
+
+    Returns (city_url_by_city, image_url_by_boat_type). Every city gets a URL:
+    the hand-picked one if we have it, else a looked-up photo of that city, else
+    a generic harbour. IMAGE_FETCH=off skips the lot -- a hotlinked CDN image is
+    a network call like any other, so that is what makes the page offline-clean.
+    """
+    if not _enabled():
+        return {}, {}
+
+    unknown = [c for c in cities if c not in CITY_IMAGES]
+    looked_up = _resolve_unknown_cities(unknown, width) if unknown else {}
+
+    city_urls = {
+        c: CITY_IMAGES.get(c) or looked_up.get(c) or _generic_city_image(c)
+        for c in cities
     }
-
-
-def hero_slides(limit=6, width=960):
-    """[(url, place)] for the rotating hero. One request; [] on any failure.
-
-    960px rather than 1280: these are background frames behind a scrim at 50%
-    opacity, and the larger size cost roughly twice the bytes for a difference
-    nobody can see through it. The template loads them one at a time, so the
-    limit bounds total transfer, not first paint.
-    """
-    resolved = lookup(
-        {name: name for name in HERO_ARTICLES},
-        width=width,
-        min_aspect=HERO_MIN_ASPECT,
-    )
-    return [
-        (resolved[name], name.split(",")[0])
-        for name in HERO_ARTICLES
-        if name in resolved
-    ][:limit]
-
-
-def city_and_boat_images(cities, width=640):
-    """One request covering both the harbour cards and the boat-type plates.
-
-    Returns (city_url_by_city, image_url_by_boat_type).
-    """
-    city_articles = {c: CITY_ARTICLES.get(c, c) for c in cities}
-    combined = dict(city_articles)
-    combined.update({f"__type__{k}": v for k, v in BOAT_TYPE_ARTICLES.items()})
-
-    resolved = lookup(combined, width)
-
-    return (
-        {c: resolved[c] for c in city_articles if c in resolved},
-        {
-            key: resolved[f"__type__{key}"]
-            for key in BOAT_TYPE_ARTICLES
-            if f"__type__{key}" in resolved
-        },
-    )
+    return city_urls, dict(BOAT_TYPE_IMAGES)

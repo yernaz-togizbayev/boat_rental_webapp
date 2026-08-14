@@ -5,6 +5,17 @@ from flask_wtf.csrf import generate_csrf
 
 import os
 
+# Load the repo-root .env so running python outside Docker sees the same
+# settings Compose injects. Existing env vars win, so the container -- where
+# there is no .env -- is unaffected. Guarded because the app must still start
+# if the image predates python-dotenv landing in requirements.txt.
+try:
+    from dotenv import find_dotenv, load_dotenv
+
+    load_dotenv(find_dotenv())
+except ImportError:  # pragma: no cover - only before the next image rebuild
+    pass
+
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 csrf = CSRFProtect(app)

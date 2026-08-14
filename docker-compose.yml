@@ -33,5 +33,9 @@ services:
       DB_USER: user
       DB_PASSWORD: pass
       SECRET_KEY: dev
+      # Optional: a free key from unsplash.com/developers gives nicer harbour
+      # photos for cities that are not hand-picked. Without it they come from
+      # the Wikipedia API instead, so leaving it unset is fine.
+      UNSPLASH_ACCESS_KEY: "${UNSPLASH_ACCESS_KEY:-}"
     volumes:
       - ./backend/:/app

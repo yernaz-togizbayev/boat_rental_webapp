@@ -24,6 +24,16 @@ os.environ["WTF_CSRF_ENABLED"] = "0"
 # network round trip on every booking-page render.
 os.environ["IMAGE_FETCH"] = "off"
 
+# email_validator is an implicit dependency: wtforms imports it only when an
+# Email() validator actually runs, so a host missing it presents as a broken app
+# -- /register 500s and every check after it fails -- rather than as a missing
+# package. requirements.txt pins it; fail loudly instead of misleadingly.
+try:
+    import email_validator  # noqa: E402, F401
+except ImportError:
+    sys.exit("smoke_test: missing dependency 'email-validator'.\n"
+             "Run: python -m pip install -r requirements.txt")
+
 from sqlalchemy import event, text  # noqa: E402
 from sqlalchemy.engine import Engine  # noqa: E402
 
@@ -612,8 +622,12 @@ def main():
             search(c, "Dubrovnik")
             body = book(c, "B4").get_data(as_text=True)
             nina = Client.query.filter_by(Email="nina@example.com").first()
+            # Guarded: if registration failed above, nina is None and a bare
+            # attribute access aborts the whole run instead of reporting.
             check("a freshly registered client can book",
-                  Rental.query.filter_by(ClientID=nina.ClientID).count() == 1, body[:300])
+                  nina is not None
+                  and Rental.query.filter_by(ClientID=nina.ClientID).count() == 1,
+                  body[:300] if nina else "registration never created the client")
 
             # Already signed in -> no duplicate account on a refresh.
             c.post("/register", data=registration(email="nina2@example.com",
