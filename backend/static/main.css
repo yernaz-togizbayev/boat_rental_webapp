@@ -426,6 +426,12 @@ label.spec-plate { display: block; cursor: pointer; margin: 0; }
   font-size: var(--step-1);
   letter-spacing: -0.02em;
 }
+/* The one fact that only this type of boat has. */
+.spec-plate .plate-detail {
+  margin: .85rem 0 0;
+  font-size: var(--step--1);
+  color: var(--sound);
+}
 
 /* --------------------------------------------------------------------------
    Buttons

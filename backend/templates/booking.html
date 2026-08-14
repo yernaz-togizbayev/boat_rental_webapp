@@ -145,27 +145,51 @@
           <img class="plate-photo" src="{{ boat_type_images[kind] }}" alt="A {{ kind }}" loading="lazy">
           {% endif %}
           <span class="plate-tick" aria-hidden="true">Selected</span>
+          {# Boat models are named for their length in feet -- a "Lagoon 42" is
+             a 42-footer -- so builder + feet reads like the real product name
+             and gives the imperial-minded a size they recognise. #}
           <div class="plate-head">
-            <span class="maker">{{ boat.Manufacturer }}</span>
+            <span class="maker">{{ boat.Manufacturer }}{% if boat.Length %} {{ (boat.Length * 3.281)|round|int }}{% endif %}</span>
             {% if boat.yacht %}<span class="badge bg-warning">Yacht</span>
             {% elif boat.motorboat %}<span class="badge bg-success">Motorboat</span>
             {% elif boat.catamaran %}<span class="badge bg-primary">Catamaran</span>
             {% else %}<span class="badge bg-secondary">Boat</span>{% endif %}
           </div>
+          {# Guests, cabins and length: what someone choosing a holiday boat
+             actually weighs. Horsepower told a renter nothing. #}
           <div class="soundings">
             <div class="sounding">
-              <span class="figure {{ 'is-null' if boat.Length is none }}">{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</span>
-              <span class="unit">LOA m</span>
-            </div>
-            <div class="sounding">
               <span class="figure">{{ boat.Seats }}</span>
-              <span class="unit">Berths</span>
+              <span class="unit">Guests</span>
             </div>
+            {% if boat.catamaran and boat.catamaran.NrOfCabins %}
             <div class="sounding">
-              <span class="figure">{{ boat.Horsepower }}</span>
-              <span class="unit">HP</span>
+              <span class="figure">{{ boat.catamaran.NrOfCabins }}</span>
+              <span class="unit">Cabins</span>
+            </div>
+            {% endif %}
+            <div class="sounding">
+              <span class="figure {{ 'is-null' if boat.Length is none }}">{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</span>
+              <span class="unit">Metres</span>
             </div>
           </div>
+          {# One line of the detail only this type of boat has. Every value here
+             was already in the database and never shown. #}
+          {% if boat.yacht and (boat.yacht.YachtName or boat.yacht.HasJacuzzi) %}
+          <p class="plate-detail">
+            {%- if boat.yacht.YachtName %}Named “{{ boat.yacht.YachtName }}”{% endif -%}
+            {%- if boat.yacht.YachtName and boat.yacht.HasJacuzzi %} · {% endif -%}
+            {%- if boat.yacht.HasJacuzzi %}jacuzzi on deck{% endif -%}
+          </p>
+          {% elif boat.motorboat and boat.motorboat.EngineType %}
+          <p class="plate-detail">
+            {{ boat.motorboat.FuelType }} {{ boat.motorboat.EngineType|lower }} engine
+          </p>
+          {% elif boat.catamaran and boat.catamaran.MaxCapacity %}
+          <p class="plate-detail">
+            Sleeps {{ boat.Seats }} · up to {{ boat.catamaran.MaxCapacity }} for a day sail
+          </p>
+          {% endif %}
           <div class="plate-head mt-3 mb-0">
             <span class="hull-id">{{ boat.BoatID }}</span>
             <span class="hull-id">{{ office.City }}</span>

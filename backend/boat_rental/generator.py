@@ -146,42 +146,79 @@ def do_clients():
         db.session.add(client)
 
 
+BOAT_BUILDERS = {
+    "yacht": ["Azimut", "Sunseeker", "Ferretti", "Princess", "Benetti"],
+    "motorboat": ["Bayliner", "Sea Ray", "Quicksilver", "Boston Whaler", "Jeanneau"],
+    "catamaran": ["Lagoon", "Fountaine Pajot", "Bali", "Leopard"],
+}
+
+BOAT_LENGTHS_M = {"motorboat": (5, 12), "catamaran": (11, 18), "yacht": (18, 40)}
+
+YACHT_NAMES = [
+    "Serenity", "Blue Horizon", "Aurora", "Sirocco", "Meridian", "Halcyon",
+    "Vela", "Corallia", "Odyssey", "Nautilus", "Thalassa", "Zephyr",
+]
+
+
+def boat_figures(kind, length):
+    """(seats, horsepower, weight) that suit a boat of this type and length."""
+    if kind == "motorboat":
+        seats = round(length * 0.8) + random.randint(0, 2)
+        horsepower = int(length * random.uniform(25, 45))
+    elif kind == "catamaran":
+        seats = round(length * 0.55) + random.randint(0, 2)
+        horsepower = int(length * random.uniform(6, 12))
+    else:
+        seats = round(length * 0.35) + random.randint(0, 2)
+        horsepower = int(length * random.uniform(45, 80))
+        
+    weight = round(length ** 3 * random.uniform(0.55, 0.95), 1)
+    return max(2, seats), horsepower, weight
+
+
 def do_boats(offices):
-    boat_type = ["yacht", "motorboat", "catamaran"]
     availability_status = [AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE]
 
     for i in range(100):
+        kind = random.choice(list(BOAT_BUILDERS))
+        low, high = BOAT_LENGTHS_M[kind]
+        length = round(random.uniform(low, high), 1)
+        seats, horsepower, weight = boat_figures(kind, length)
+
         boat = Boat(
             BoatID=f"B{i + 1}",
             OfficeID=random.choice(offices).OfficeID,
-            Length=random.randint(5, 30),
-            Seats=random.randint(2, 10),
-            Manufacturer=f"Manufacturer{random.randint(1, 5)}",
+            Length=length,
+            Seats=seats,
+            Manufacturer=random.choice(BOAT_BUILDERS[kind]),
             AvailabilityStatus=random.choice(availability_status),
-            Weight=random.uniform(500.0, 5000.0),
-            Horsepower=random.randint(50, 300),
+            Weight=weight,
+            Horsepower=horsepower,
         )
         db.session.add(boat)
 
-        boat_type_choice = random.choice(boat_type)
         concrete_boat = None
-        if boat_type_choice == "yacht":
+        if kind == "yacht":
             concrete_boat = Yacht(
                 YachtID=boat.BoatID,
-                YachtName=f"Yacht {i + 1}",
-                HasJacuzzi=random.choice([True, False]),
+                YachtName=random.choice(YACHT_NAMES),
+                HasJacuzzi=length >= 24 and random.random() < 0.6,
             )
-        elif boat_type_choice == "motorboat":
+        elif kind == "motorboat":
             concrete_boat = Motorboat(
                 MotorboatID=boat.BoatID,
-                EngineType=random.choice(["Inboard", "Outboard"]),
-                FuelType=random.choice(["Diesel", "Benzin"]),
+                # Outboards hang off the transom of a small boat; a bigger hull
+                # carries the engine inside.
+                EngineType="Outboard" if length < 9 else "Inboard",
+                FuelType=random.choice(["Diesel", "Petrol"]),
             )
-        elif boat_type_choice == "catamaran":
+        elif kind == "catamaran":
             concrete_boat = Catamaran(
                 CatamaranID=boat.BoatID,
-                NrOfCabins=random.randint(1, 5),
-                MaxCapacity=random.randint(4, 20),
+                NrOfCabins=max(2, round(length / 3.5)),
+                # Berths are for sleeping; a cat carries far more people on a
+                # day sail than it can put to bed.
+                MaxCapacity=seats + random.randint(4, 10),
             )
 
         db.session.add(concrete_boat)
