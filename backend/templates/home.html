@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block body %}
+{% set PORTS_SHOWN = 8 %}
 <section class="chart-hero rise">
   <div class="hero-frames" aria-hidden="true">
     {% if hero_slides %}
@@ -35,16 +36,25 @@
   <div class="hero-body">
     <p class="eyebrow">Welcome aboard, {{ client["FirstName"] }}</p>
     <h1>Pick a harbour, pick your dates, pick the boat.</h1>
-    <p>Yachts, catamarans and motorboats across five Mediterranean ports. Availability is live — if it's listed, it's yours for those days.</p>
+    {# Counted, not stated: a manager can open an office in any city at any
+       time, so "five Mediterranean ports" went stale the first time one did. #}
+    <p>Yachts, catamarans and motorboats{% if ports %} across {{ ports|length }}
+      harbour{{ 's' if ports|length != 1 }} worldwide{% endif %}.
+      Availability is live — if it's listed, it's yours for those days.</p>
     <a class="btn btn-success btn-lg" href="{{ url_for('booking') }}">Find a boat</a>
 
+    {% if ports %}
+    {# Capped: the strip is chart marginalia, and every harbour is one click
+       away on the booking page anyway. #}
     <div class="ports">
-      <span class="port">Mykonos</span>
-      <span class="port">Nice</span>
-      <span class="port">Barcelona</span>
-      <span class="port">Santorini</span>
-      <span class="port">Dubrovnik</span>
+      {% for port in ports[:PORTS_SHOWN] %}
+      <span class="port">{{ port }}</span>
+      {% endfor %}
+      {% if ports|length > PORTS_SHOWN %}
+      <a class="port port-more" href="{{ url_for('booking') }}">+{{ ports|length - PORTS_SHOWN }} more</a>
+      {% endif %}
     </div>
+    {% endif %}
   </div>
 
   {% if hero_slides %}

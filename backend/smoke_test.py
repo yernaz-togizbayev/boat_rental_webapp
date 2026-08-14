@@ -185,9 +185,15 @@ def main():
         with app.test_client() as c:
             as_client(c, "C1")
             body = search(c, "Dubrovnik").get_data(as_text=True)
-            check("search lists the available boat", "B1" in body)
-            check("search hides the maintenance boat", "B2" not in body)
-            check("search hides boats in other cities", "B3" not in body)
+            # Match the radio's value, not a bare "B3": the page carries a
+            # 91-char mixed-case CSRF token, so a substring test fails at random
+            # whenever that token happens to contain the boat id.
+            def offered(boat_id):
+                return f'value="{boat_id}"' in body
+
+            check("search lists the available boat", offered("B1"))
+            check("search hides the maintenance boat", not offered("B2"))
+            check("search hides boats in other cities", not offered("B3"))
             check("NULL boat length renders as a dash", "—" in body)
 
         # 3. Booking works and shows on the report

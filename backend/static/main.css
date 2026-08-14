@@ -720,6 +720,16 @@ input[type="date"].form-control { font-family: var(--mono); font-size: var(--ste
   border-radius: 3px;
   padding: .25rem .5rem;
 }
+/* The overflow chip is a link to the full list, so it reads as clickable. */
+.ports .port-more {
+  text-decoration: none;
+  border-style: dashed;
+}
+.ports .port-more:hover,
+.ports .port-more:focus {
+  color: #fff;
+  border-color: rgba(255, 255, 255, .45);
+}
 
 /* --------------------------------------------------------------------------
    Auth pages

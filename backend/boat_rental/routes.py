@@ -56,6 +56,16 @@ def sign_out():
     for key in EXCLUSIVE_SESSION_KEYS:
         session.pop(key, None)
 
+def served_cities():
+    """Every city the fleet operates in, alphabetically.
+
+    There is no City table -- a city exists because an Office row names it -- so
+    this is the only definition of "where we operate", and the home page, the
+    booking picker and the manager rentals filter must all agree on it.
+    """
+    return [c for (c,) in Office.query.with_entities(Office.City).distinct().order_by(Office.City)]
+
+
 def manager_required(f):
     @wraps(f)
     def _wrapped(*args, **kwargs):
@@ -175,7 +185,8 @@ def home():
         return redirect(url_for("login"))
 
     return render_template("home.html", client=session["client"],
-                           hero_slides=images.hero_slides())
+                           hero_slides=images.hero_slides(),
+                           ports=served_cities())
 
 
 @app.route("/booking", methods=["GET", "POST"])
@@ -213,7 +224,7 @@ def booking():
         booking_form = build_booking_form(search_params, available_boats)
         rental_days = (search_params["end_date"] - search_params["start_date"]).days
 
-    cities = [c for (c,) in Office.query.with_entities(Office.City).distinct().order_by(Office.City)]
+    cities = served_cities()
     city_images, boat_type_images = images.city_and_boat_images(cities)
 
     return render_template(
@@ -1104,7 +1115,7 @@ def list_rentals():
         query = query.filter(Office.City == city)
 
     rows = query.order_by(Rental.RentalDate.desc(), Office.City).all()
-    cities = [c for (c,) in Office.query.with_entities(Office.City).distinct().order_by(Office.City)]
+    cities = served_cities()
 
     return render_template(
         "rentals_list.html",
