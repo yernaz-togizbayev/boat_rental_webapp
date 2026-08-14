@@ -1,5 +1,7 @@
 import random
 from datetime import timedelta, date
+from uuid import uuid4
+
 from flask import current_app
 from sqlalchemy import text
 
@@ -21,7 +23,25 @@ from boat_rental.models import (
 )
 
 
+SEED_OFFICES = [
+    ("O1", "Tourlos Marina", "Greece", "Mykonos", "84600"),
+    ("O2", "Quai des Docks", "France", "Nice", "06000"),
+    ("O3", "Moll de la Barceloneta, 1", "Spain", "Barcelona", "08039"),
+    ("O4", "Old Port of Fira", "Greece", "Santorini", "84700"),
+    ("O5", "Obala Stjepana Radića, 2", "Croatia", "Dubrovnik", "20000"),
+]
+
+
 def generate_data():
+    """Refill the demo data, keeping the harbours.
+
+    Offices are deliberately NOT wiped. A manager can open an office in any
+    city, and deleting them here meant the only way to restock the fleet was to
+    destroy every city anyone had added -- which is exactly what happened. The
+    five seeded offices are recreated only if their row is missing, so an
+    edited address survives too, and the new fleet spreads across every office
+    that exists rather than just those five.
+    """
     try:
         db.session.execute(text("DELETE FROM `Maintains`"))
         db.session.execute(text("DELETE FROM `Supervises`"))
@@ -31,7 +51,7 @@ def generate_data():
         db.session.query(Staff).delete()
 
         db.session.execute(text("UPDATE `Manager` SET `SupervisorID` = NULL"))
-        
+
         db.session.query(Manager).delete()
         db.session.query(Employee).delete()
 
@@ -40,50 +60,17 @@ def generate_data():
         db.session.query(Catamaran).delete()
         db.session.query(Boat).delete()
         db.session.query(Client).delete()
-        db.session.query(Office).delete()
 
-
-        offices = [
-            Office(
-                OfficeID="O1",
-                Street="Tourlos Marina",
-                Country="Greece",
-                City="Mykonos",
-                ZIP="84600",
-            ),
-            Office(
-                OfficeID="O2",
-                Street="Quai des Docks",
-                Country="France",
-                City="Nice",
-                ZIP="06000",
-            ),
-            Office(
-                OfficeID="O3",
-                Street="Moll de la Barceloneta, 1",
-                Country="Spain",
-                City="Barcelona",
-                ZIP="08039",
-            ),
-            Office(
-                OfficeID="O4",
-                Street="Old Port of Fira",
-                Country="Greece",
-                City="Santorini",
-                ZIP="84700",
-            ),
-            Office(
-                OfficeID="O5",
-                Street="Obala Stjepana Radića, 2",
-                Country="Croatia",
-                City="Dubrovnik",
-                ZIP="20000",
-            ),
-        ]
-        for office in offices:
-            db.session.add(office)
+        existing = {o.OfficeID for o in Office.query.with_entities(Office.OfficeID)}
+        for office_id, street, country, city, zip_code in SEED_OFFICES:
+            if office_id not in existing:
+                db.session.add(Office(
+                    OfficeID=office_id, Street=street,
+                    Country=country, City=city, ZIP=zip_code,
+                ))
 
         db.session.flush()
+        offices = Office.query.all()
 
         do_employees(offices)
         do_clients()
@@ -176,52 +163,68 @@ def boat_figures(kind, length):
     return max(2, seats), horsepower, weight
 
 
+def build_boat(boat_id, office_id, availability=AVAILABILITY_AVAILABLE):
+    """One coherent boat plus its subclass row. Adds both; does not commit."""
+    kind = random.choice(list(BOAT_BUILDERS))
+    low, high = BOAT_LENGTHS_M[kind]
+    length = round(random.uniform(low, high), 1)
+    seats, horsepower, weight = boat_figures(kind, length)
+
+    boat = Boat(
+        BoatID=boat_id,
+        OfficeID=office_id,
+        Length=length,
+        Seats=seats,
+        Manufacturer=random.choice(BOAT_BUILDERS[kind]),
+        AvailabilityStatus=availability,
+        Weight=weight,
+        Horsepower=horsepower,
+    )
+    db.session.add(boat)
+
+    if kind == "yacht":
+        concrete_boat = Yacht(
+            YachtID=boat_id,
+            YachtName=random.choice(YACHT_NAMES),
+            HasJacuzzi=length >= 24 and random.random() < 0.6,
+        )
+    elif kind == "motorboat":
+        concrete_boat = Motorboat(
+            MotorboatID=boat_id,
+            EngineType="Outboard" if length < 9 else "Inboard",
+            FuelType=random.choice(["Diesel", "Petrol"]),
+        )
+    else:
+        concrete_boat = Catamaran(
+            CatamaranID=boat_id,
+            NrOfCabins=max(2, round(length / 3.5)),
+            MaxCapacity=seats + random.randint(4, 10),
+        )
+
+    db.session.add(concrete_boat)
+    return boat
+
+
+def stock_office(office_id, count=6):
+    """
+    Give one office a small fleet, deleting nothing.
+    """
+    return [build_boat(f"B{uuid4().hex[:8]}", office_id) for _ in range(count)]
+
+
 def do_boats(offices):
+    """
+    200 boats spread over every office, each guaranteed one bookable boat.
+    """
     availability_status = [AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE]
 
-    for i in range(100):
-        kind = random.choice(list(BOAT_BUILDERS))
-        low, high = BOAT_LENGTHS_M[kind]
-        length = round(random.uniform(low, high), 1)
-        seats, horsepower, weight = boat_figures(kind, length)
-
-        boat = Boat(
-            BoatID=f"B{i + 1}",
-            OfficeID=random.choice(offices).OfficeID,
-            Length=length,
-            Seats=seats,
-            Manufacturer=random.choice(BOAT_BUILDERS[kind]),
-            AvailabilityStatus=random.choice(availability_status),
-            Weight=weight,
-            Horsepower=horsepower,
+    for i in range(200):
+        first_round = i < len(offices)
+        build_boat(
+            f"B{i + 1}",
+            offices[i % len(offices)].OfficeID,
+            AVAILABILITY_AVAILABLE if first_round else random.choice(availability_status),
         )
-        db.session.add(boat)
-
-        concrete_boat = None
-        if kind == "yacht":
-            concrete_boat = Yacht(
-                YachtID=boat.BoatID,
-                YachtName=random.choice(YACHT_NAMES),
-                HasJacuzzi=length >= 24 and random.random() < 0.6,
-            )
-        elif kind == "motorboat":
-            concrete_boat = Motorboat(
-                MotorboatID=boat.BoatID,
-                # Outboards hang off the transom of a small boat; a bigger hull
-                # carries the engine inside.
-                EngineType="Outboard" if length < 9 else "Inboard",
-                FuelType=random.choice(["Diesel", "Petrol"]),
-            )
-        elif kind == "catamaran":
-            concrete_boat = Catamaran(
-                CatamaranID=boat.BoatID,
-                NrOfCabins=max(2, round(length / 3.5)),
-                # Berths are for sleeping; a cat carries far more people on a
-                # day sail than it can put to bed.
-                MaxCapacity=seats + random.randint(4, 10),
-            )
-
-        db.session.add(concrete_boat)
 
 
 def do_rentals():

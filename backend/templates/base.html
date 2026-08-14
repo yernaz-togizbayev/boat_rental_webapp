@@ -76,21 +76,23 @@
     </header>
 
     <main role="main" class="page">
-      {% if not session.data_generated %}
+      {# Always available, not once per session: generate_data() keeps the
+         offices now, so running it again refills the fleet instead of
+         destroying every city a manager added. #}
       <div class="seed-notice rise">
         <p>
-          <strong>Start here</strong>
-          Fill the database with demo cities, boats, clients and employees. You only need to do this once.
+          <strong>Demo data</strong>
+          Refill the database with demo boats, clients, employees and rentals.
+          Your harbours are kept — only the fleet and the people are replaced.
         </p>
         <form method="post" action="{{ url_for('reset_data') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-success"
-            onclick="return confirm('This replaces all existing data and signs you out. Continue?')">
+            onclick="return confirm('This replaces all boats, clients, employees and rentals, and signs you out. Your cities are kept. Continue?')">
             Generate demo data
           </button>
         </form>
       </div>
-      {% endif %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}

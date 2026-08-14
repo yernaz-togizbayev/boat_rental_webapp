@@ -37,6 +37,15 @@
           </td>
           <td><span class="num">{{ employee_counts.get(o.OfficeID, 0) }}</span></td>
           <td>
+            {% if not boats %}
+            {# Only for an empty harbour: it is the one state a client can see
+               but cannot book, and the alternative was wiping the database. #}
+            <form method="post" action="{{ url_for('stock_office_fleet', office_id=o.OfficeID) }}" style="display:inline"
+                  onsubmit="return confirm('Add six demo boats to {{ o.City }}?')">
+              {{ delete_form.hidden_tag() }}
+              <button class="btn btn-sm btn-success">Stock with demo boats</button>
+            </form>
+            {% endif %}
             <a class="btn btn-sm btn-outline-success" href="{{ url_for('new_boat', office_id=o.OfficeID) }}">Add boat</a>
             <a class="btn btn-sm btn-outline-primary" href="{{ url_for('edit_office', office_id=o.OfficeID) }}">Edit</a>
             <form method="post" action="{{ url_for('delete_office', office_id=o.OfficeID) }}" style="display:inline" onsubmit="return confirm('Delete {{ o.City }}?')">

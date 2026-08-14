@@ -13,7 +13,7 @@ from boat_rental.assignments import (
     detach_manager_links,
     detach_staff_links,
 )
-from boat_rental.generator import generate_data
+from boat_rental.generator import generate_data, stock_office
 from boat_rental.models import (
     AVAILABILITY_AVAILABLE,
     Office,
@@ -50,8 +50,9 @@ def sign_in(role, payload):
 def sign_out():
     """Drop both role keys, leaving the rest of the session intact.
 
-    Deliberately not session.clear() -- that would also drop `data_generated`,
-    and the seed button would come back every time someone logs out.
+    Deliberately not session.clear(): signing out is about the role, and
+    clearing wholesale takes any other session state with it -- including the
+    flash queue, so the "Logged out" message itself would vanish.
     """
     for key in EXCLUSIVE_SESSION_KEYS:
         session.pop(key, None)
@@ -226,6 +227,12 @@ def booking():
 
     cities = served_cities()
     city_images, boat_type_images = images.city_and_boat_images(cities)
+    stocked_cities = {
+        c for (c,) in db.session.query(Office.City)
+        .join(Boat, Boat.OfficeID == Office.OfficeID)
+        .filter(Boat.AvailabilityStatus == AVAILABILITY_AVAILABLE)
+        .distinct()
+    }
 
     return render_template(
         "booking.html",
@@ -235,6 +242,7 @@ def booking():
         search_params=search_params,
         rental_days=rental_days,
         cities=cities,
+        stocked_cities=stocked_cities,
         city_images=city_images,
         boat_type_images=boat_type_images,
     )
@@ -357,18 +365,13 @@ def analytics():
 
 @app.route("/generate-data", methods=["POST"])
 def reset_data():
-    """Seed the demo data once per browser session.
+    """Refill the demo data. Offered to anonymous visitors, and repeatable.
 
-    The button that posts here is offered to anonymous visitors, so the
-    one-shot guard is the session flag below rather than a role check: once
-    this browser has generated the data, the button is gone and a replayed
-    POST is refused. Nothing stops a fresh session from wiping the DB again --
-    that is acceptable for a demo app with no passwords.
+    It used to hide itself after one use per browser session, which meant the
+    only way back was a fresh session -- and pressing it then destroyed every
+    city anyone had added. generate_data() now keeps the offices, so running it
+    again is a refill rather than a loss and the button can simply stay.
     """
-    if session.get("data_generated"):
-        flash("Demo data has already been generated.", "warning")
-        return redirect(url_for("login"))
-
     try:
         generate_data()
     except Exception:
@@ -379,8 +382,7 @@ def reset_data():
     # generate_data() deletes the clients and managers a signed-in visitor
     # would be pointing at, so drop the role keys.
     sign_out()
-    session["data_generated"] = True
-    flash("Demo data generated. Please sign in.", "success")
+    flash("Demo data refilled. Your harbours were kept. Please sign in.", "success")
     return redirect(url_for("login"))
 
 
@@ -861,6 +863,36 @@ def delete_office(office_id):
         db.session.rollback()
         app.logger.exception("Failed to delete office %s", office_id)
         flash("Delete failed.", "error")
+
+    return redirect(url_for("list_offices"))
+
+
+@app.route("/manager/offices/<office_id>/stock", methods=["POST"])
+@manager_required
+def stock_office_fleet(office_id):
+    """
+    Give an empty harbour a starter fleet without touching anything else.
+    """
+    office = Office.query.get(office_id)
+    if not office:
+        flash(f"Unknown office {office_id}.", "error")
+        return redirect(url_for("list_offices"))
+
+    if Boat.query.filter_by(OfficeID=office_id).count():
+        flash(f"{office.City} already has boats. Use “Add boat” for one more.",
+              "warning")
+        return redirect(url_for("list_offices"))
+
+    try:
+        boats = stock_office(office_id)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to stock office %s", office_id)
+        flash(f"Could not add boats to {office.City}.", "error")
+    else:
+        flash(f"Added {len(boats)} boats to {office.City}. It is now bookable.",
+              "success")
 
     return redirect(url_for("list_offices"))
 

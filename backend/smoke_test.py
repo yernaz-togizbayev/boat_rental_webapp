@@ -443,6 +443,40 @@ def main():
                   Rental.query.filter_by(BoatID=new_boat_row.BoatID).count() == 1,
                   body[:300])
 
+        # 13b. Stocking an empty harbour must add boats and delete nothing.
+        #      The only tool for this used to be /generate-data, which wipes
+        #      every table -- that is how a database full of offices was lost.
+        with app.test_client() as c:
+            as_manager(c, "M1")
+            c.post("/manager/offices/new", data={
+                "city": "Hvar", "country": "Croatia",
+                "street": "Riva 1", "zip": "21450", "submit": "Save office",
+            }, follow_redirects=True)
+            hvar = Office.query.filter_by(City="Hvar").first()
+            before = (Office.query.count(), Client.query.count(),
+                      Rental.query.count(), Boat.query.count())
+
+            body = c.post(f"/manager/offices/{hvar.OfficeID}/stock",
+                          follow_redirects=True).get_data(as_text=True)
+            check("stocking an empty harbour adds boats",
+                  Boat.query.filter_by(OfficeID=hvar.OfficeID).count() > 0, body[:300])
+            check("stocking deletes nothing else",
+                  (Office.query.count(), Client.query.count(), Rental.query.count())
+                  == before[:3])
+            check("stocking only added boats",
+                  Boat.query.count() > before[3])
+
+            body = c.post(f"/manager/offices/{hvar.OfficeID}/stock",
+                          follow_redirects=True).get_data(as_text=True)
+            check("stocking an already stocked harbour is refused",
+                  "already has boats" in body, body[:300])
+
+        with app.test_client() as c:
+            as_client(c, "C1")
+            body = search(c, "Hvar").get_data(as_text=True)
+            check("a stocked harbour becomes bookable",
+                  "No boats available" not in body, body[:300])
+
         # Switching subclass moves the row between tables, like a staff/manager
         # role change does.
         with app.test_client() as c:
@@ -671,26 +705,42 @@ def main():
             body = c.get("/login").get_data(as_text=True)
             check("login page links to registration", "Create an account" in body)
 
-        # 15. generate-data is open to anonymous visitors, but only once per session
+        # 15. generate-data is open to anonymous visitors and repeatable, and
+        #     it must never take the harbours with it -- the whole reason it is
+        #     safe to leave the button on the page.
         with app.test_client() as c:
-            body = c.post("/generate-data", follow_redirects=True).get_data(as_text=True)
-            check("anonymous can generate data", "Demo data generated" in body, body[:300])
-            check("button hides after generating",
-                  "Generate demo data" not in body, body[:300])
-            body = c.post("/generate-data", follow_redirects=True).get_data(as_text=True)
-            check("replayed generate-data is refused",
-                  "already been generated" in body, body[:300])
+            cities_before = {c_ for (c_,) in Office.query.with_entities(Office.City)}
+            added = Office.query.filter_by(City="Hvar").first()
+            check("a manager-added city exists before the refill", added is not None)
 
-            # logging in and out must not resurrect the button
-            client_id = Client.query.first().ClientID
-            c.get(f"/select-client/{client_id}", follow_redirects=True)
-            body = c.get("/logout", follow_redirects=True).get_data(as_text=True)
-            check("button stays hidden after a client login/logout",
-                  "Generate demo data" not in body, body[:300])
-            as_manager(c, Manager.query.first().ManagerID)
-            body = c.get("/manager/logout", follow_redirects=True).get_data(as_text=True)
-            check("button stays hidden after a manager login/logout",
-                  "Generate demo data" not in body, body[:300])
+            body = c.post("/generate-data", follow_redirects=True).get_data(as_text=True)
+            check("anonymous can generate data", "Demo data refilled" in body, body[:300])
+            # Superset, not equality: the refill also recreates any of the five
+            # seeded offices whose row is missing, so the set can grow.
+            cities_after = {c_ for (c_,) in Office.query.with_entities(Office.City)}
+            check("the refill loses no harbour",
+                  cities_before <= cities_after,
+                  f"lost: {sorted(cities_before - cities_after)}")
+            check("the manager-added city survives the refill",
+                  Office.query.filter_by(City="Hvar").first() is not None)
+            check("button stays available for another run",
+                  "Generate demo data" in body, body[:300])
+
+            body = c.post("/generate-data", follow_redirects=True).get_data(as_text=True)
+            check("generate-data can be run again", "Demo data refilled" in body, body[:300])
+
+            # Every harbour must end up with something bookable, or a client
+            # sees a city on the booking page that can never be booked.
+            stocked = {
+                c_ for (c_,) in db.session.query(Office.City)
+                .join(Boat, Boat.OfficeID == Office.OfficeID)
+                .filter(Boat.AvailabilityStatus == AVAILABILITY_AVAILABLE)
+                .distinct()
+            }
+            every_city = {c_ for (c_,) in Office.query.with_entities(Office.City)}
+            check("every harbour has a bookable boat after the refill",
+                  stocked == every_city,
+                  f"unstocked: {sorted(every_city - stocked)}")
 
         # 16. The Generate Data reset runs cleanly and fills the m:n tables
         with app.app_context():

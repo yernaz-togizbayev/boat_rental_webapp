@@ -70,12 +70,16 @@
    submitting, so the dates you already typed survive the choice. #}
 <div class="harbours rise">
   {% for city in cities %}
-  <button type="button" class="harbour {{ 'is-picked' if city == search_params.city }}"
-          data-city="{{ city }}" aria-pressed="{{ 'true' if city == search_params.city else 'false' }}">
+  {% set stocked = city in stocked_cities %}
+  <button type="button" class="harbour {{ 'is-picked' if city == search_params.city }} {{ 'is-empty' if not stocked }}"
+          data-city="{{ city }}" {{ 'disabled' if not stocked }}
+          {% if not stocked %}title="No boats here yet"{% endif %}
+          aria-pressed="{{ 'true' if city == search_params.city else 'false' }}">
     {% if city_images.get(city) %}
       <img src="{{ city_images[city] }}" alt="" loading="lazy">
     {% endif %}
     <span class="harbour-label">{{ city }}</span>
+    {% if not stocked %}<span class="harbour-note">No boats yet</span>{% endif %}
   </button>
   {% endfor %}
 </div>
