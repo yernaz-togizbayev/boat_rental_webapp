@@ -35,6 +35,36 @@
   </div>
 </div>
 
+<script>
+  // Picking a start date drags the end date to the day after it. Convenience
+  // only -- validate_end_after_start still decides, since the POST is untrusted.
+  (function () {
+    var start = document.querySelector('input[name="start_date"]');
+    var end = document.querySelector('input[name="end_date"]');
+    if (!start || !end) return;
+
+    function nextDay(value) {
+      var p = value.split('-');
+      // Day + 1 overflows into the next month or year on its own.
+      var d = new Date(+p[0], +p[1] - 1, +p[2] + 1);
+      return d.getFullYear() + '-' +
+             String(d.getMonth() + 1).padStart(2, '0') + '-' +
+             String(d.getDate()).padStart(2, '0');
+    }
+
+    function sync() {
+      if (!start.value) return;
+      var earliest = nextDay(start.value);
+      // ISO dates compare correctly as strings.
+      end.min = earliest;
+      if (!end.value || end.value <= start.value) end.value = earliest;
+    }
+
+    start.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+
 {% if cities %}
 {# Harbour picker. Clicking a card fills the select above rather than
    submitting, so the dates you already typed survive the choice. #}
