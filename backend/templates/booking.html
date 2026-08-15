@@ -194,6 +194,14 @@
             Sleeps {{ boat.Seats }} · up to {{ boat.catamaran.MaxCapacity }} for a day sail
           </p>
           {% endif %}
+          {# The rate is the comparable figure, but the total for these exact
+             dates is the one that decides the booking, so show both. #}
+          {% if boat.DailyRate is not none %}
+          <div class="plate-price">
+            <span class="rate">{{ boat.DailyRate | money }} / day</span>
+            <span class="total">{{ (boat.DailyRate * rental_days) | money }}</span>
+          </div>
+          {% endif %}
           <div class="plate-head mt-3 mb-0">
             <span class="hull-id">{{ boat.BoatID }}</span>
             <span class="hull-id">{{ office.City }}</span>
@@ -206,8 +214,8 @@
     <div class="book-bar">
       <p class="book-hint">Pick a boat above, then book it.</p>
       <button type="submit" name="book" value="true" class="btn btn-success btn-lg js-confirm"
-              data-confirm="Book this boat for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}?">
-        Book for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}
+              data-confirm="Reserve this boat for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}? You will pay on the next screen.">
+        Reserve for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}
       </button>
     </div>
   </form>

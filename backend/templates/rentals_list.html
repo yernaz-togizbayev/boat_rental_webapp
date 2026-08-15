@@ -39,6 +39,7 @@
           <th>From</th>
           <th>To</th>
           <th>Stage</th>
+          <th>Amount</th>
           <th>Payment</th>
           <th style="width:120px">Actions</th>
         </tr>
@@ -58,6 +59,7 @@
             {% elif under_way %}<span class="badge bg-warning">Under way</span>
             {% else %}<span class="badge bg-success">Upcoming</span>{% endif %}
           </td>
+          <td><span class="num">{{ rental.TotalAmount | money }}</span></td>
           <td>
             <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
               {{ rental.PaymentStatus }}

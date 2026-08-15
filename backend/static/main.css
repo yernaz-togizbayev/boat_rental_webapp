@@ -451,6 +451,53 @@ label.spec-plate { display: block; cursor: pointer; margin: 0; }
   font-size: var(--step--1);
   color: var(--sound);
 }
+/* Price sits apart from the specs: it is the figure that decides the booking. */
+.spec-plate .plate-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-top: .9rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--hairline);
+}
+.spec-plate .plate-price .rate {
+  font-family: var(--mono);
+  font-size: var(--step--1);
+  color: var(--sound);
+}
+.spec-plate .plate-price .total {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--step-1);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Checkout summary */
+.charter-summary { display: grid; grid-template-columns: auto 1fr; gap: .45rem 1rem; margin: 0; }
+.charter-summary dt {
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--sound);
+  font-weight: 400;
+}
+.charter-summary dd { margin: 0; }
+.charter-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 1.1rem;
+  padding-top: .9rem;
+  border-top: 1px solid var(--hairline);
+  font-family: var(--mono);
+}
+.charter-total strong {
+  font-size: var(--step-2);
+  font-variant-numeric: tabular-nums;
+}
 
 /* --------------------------------------------------------------------------
    Buttons

@@ -1,5 +1,6 @@
 import random
 from datetime import timedelta, date
+from decimal import Decimal
 from uuid import uuid4
 
 from flask import current_app
@@ -10,6 +11,8 @@ from boat_rental import db
 from boat_rental.models import (
     AVAILABILITY_AVAILABLE,
     AVAILABILITY_MAINTENANCE,
+    CENTS,
+    charter_total,
     Office,
     Client,
     Boat,
@@ -148,19 +151,28 @@ YACHT_NAMES = [
 
 
 def boat_figures(kind, length):
-    """(seats, horsepower, weight) that suit a boat of this type and length."""
+    """(seats, horsepower, weight, daily_rate) suiting this type and length.
+
+    The rate is per metre per day, which is roughly how charter pricing works:
+    a 6 m motorboat lands near EUR 350 a day and a 40 m yacht near EUR 5,000.
+    """
     if kind == "motorboat":
         seats = round(length * 0.8) + random.randint(0, 2)
         horsepower = int(length * random.uniform(25, 45))
+        rate_per_metre = random.uniform(40, 70)
     elif kind == "catamaran":
         seats = round(length * 0.55) + random.randint(0, 2)
         horsepower = int(length * random.uniform(6, 12))
+        rate_per_metre = random.uniform(55, 90)
     else:
         seats = round(length * 0.35) + random.randint(0, 2)
         horsepower = int(length * random.uniform(45, 80))
-        
+        rate_per_metre = random.uniform(90, 160)
+
     weight = round(length ** 3 * random.uniform(0.55, 0.95), 1)
-    return max(2, seats), horsepower, weight
+    # Rounded to the nearest 10 -- nobody quotes a charter at EUR 1,337.42.
+    daily_rate = Decimal(round(length * rate_per_metre, -1)).quantize(CENTS)
+    return max(2, seats), horsepower, weight, daily_rate
 
 
 def build_boat(boat_id, office_id, availability=AVAILABILITY_AVAILABLE):
@@ -168,7 +180,7 @@ def build_boat(boat_id, office_id, availability=AVAILABILITY_AVAILABLE):
     kind = random.choice(list(BOAT_BUILDERS))
     low, high = BOAT_LENGTHS_M[kind]
     length = round(random.uniform(low, high), 1)
-    seats, horsepower, weight = boat_figures(kind, length)
+    seats, horsepower, weight, daily_rate = boat_figures(kind, length)
 
     boat = Boat(
         BoatID=boat_id,
@@ -179,6 +191,7 @@ def build_boat(boat_id, office_id, availability=AVAILABILITY_AVAILABLE):
         AvailabilityStatus=availability,
         Weight=weight,
         Horsepower=horsepower,
+        DailyRate=daily_rate,
     )
     db.session.add(boat)
 
@@ -243,19 +256,21 @@ def do_rentals():
     seen = set()
     for _ in range(10):
         client_id = random.choice(clients).ClientID
-        boat_id = random.choice(boats).BoatID
+        boat = random.choice(boats)
         rental_date = date.today() + timedelta(days=random.randint(-30, 30))
-        if (client_id, boat_id, rental_date) in seen:
+        if (client_id, boat.BoatID, rental_date) in seen:
             continue
-        seen.add((client_id, boat_id, rental_date))
+        seen.add((client_id, boat.BoatID, rental_date))
 
+        days = random.randint(1, 14)
         db.session.add(
             Rental(
                 ClientID=client_id,
-                BoatID=boat_id,
+                BoatID=boat.BoatID,
                 RentalDate=rental_date,
-                RentalEndDate=rental_date + timedelta(days=random.randint(1, 14)),
+                RentalEndDate=rental_date + timedelta(days=days),
                 PaymentStatus=random.choice(["PAID", "UNPAID", "PENDING"]),
+                TotalAmount=charter_total(boat.DailyRate, days),
             )
         )
 

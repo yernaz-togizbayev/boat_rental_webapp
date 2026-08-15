@@ -17,6 +17,7 @@
           <th>From</th>
           <th>To</th>
           <th>Days</th>
+          <th>Total</th>
           <th>Payment</th>
           <th>Actions</th>
         </tr>
@@ -28,12 +29,17 @@
           <td><span class="num">{{ rental.RentalDate.strftime('%Y-%m-%d') }}</span></td>
           <td><span class="num">{{ rental.RentalEndDate.strftime('%Y-%m-%d') if rental.RentalEndDate else "—" }}</span></td>
           <td><span class="num">{{ rental.rental_days }}</span></td>
+          <td><span class="num">{{ rental.TotalAmount | money }}</span></td>
           <td>
             <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
               {{ rental.PaymentStatus }}
             </span>
           </td>
           <td>
+            {% if rental.PaymentStatus != 'PAID' %}
+            <a class="btn btn-sm btn-success"
+               href="{{ url_for('pay_rental', boat_id=rental.BoatID, rental_date=rental.RentalDate.strftime('%Y-%m-%d')) }}">Pay now</a>
+            {% endif %}
             {% if rental.RentalDate > today %}
             <form method="post" style="display:inline"
                   action="{{ url_for('cancel_rental', boat_id=rental.BoatID, rental_date=rental.RentalDate.strftime('%Y-%m-%d')) }}"

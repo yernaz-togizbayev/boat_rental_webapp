@@ -5,7 +5,8 @@ from sqlalchemy.exc import IntegrityError
 from functools import wraps
 from uuid import uuid4
 
-from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm, OfficeForm, BoatForm, ClientRegistrationForm, SupervisesForm, MaintainsForm
+from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm, OfficeForm, BoatForm, ClientRegistrationForm, SupervisesForm, MaintainsForm, PaymentForm
+from boat_rental.forms import TEST_CARD_ACCEPTED, TEST_CARD_DECLINED, card_digits
 from boat_rental import app, db
 from boat_rental import assignments, images
 from boat_rental.assignments import (
@@ -16,6 +17,9 @@ from boat_rental.assignments import (
 from boat_rental.generator import generate_data, stock_office
 from boat_rental.models import (
     AVAILABILITY_AVAILABLE,
+    PAYMENT_PAID,
+    PAYMENT_UNPAID,
+    charter_total,
     Office,
     Client,
     Boat,
@@ -205,8 +209,15 @@ def booking():
         search_params = parse_search_params(
             request.form, "rental_date", "rental_end_date"
         )
-        if search_params and attempt_booking(search_params):
-            return redirect(url_for("report"))
+        booked_boat = attempt_booking(search_params) if search_params else False
+        if booked_boat:
+            # Straight to checkout: the rental exists but is UNPAID, and an
+            # unpaid charter is the one thing the client still has to act on.
+            return redirect(url_for(
+                "pay_rental",
+                boat_id=booked_boat,
+                rental_date=search_params["start_date"].isoformat(),
+            ))
     elif search_form.validate_on_submit():
         search_params = {
             "city": search_form.city.data,
@@ -290,9 +301,6 @@ def cancel_rental(boat_id, rental_date):
         flash("Invalid rental date.", "error")
         return redirect(url_for("report"))
 
-    # filter_by rather than query.get((...)): the tuple form depends on the
-    # column order of the PrimaryKeyConstraint, and ClientID/BoatID are both
-    # VARCHAR(50), so a transposition would not raise -- it would just be wrong.
     rental = Rental.query.filter_by(
         ClientID=session["client"]["ClientID"], BoatID=boat_id, RentalDate=start
     ).first()
@@ -301,12 +309,6 @@ def cancel_rental(boat_id, rental_date):
         flash("That rental is not on your list.", "error")
         return redirect(url_for("report"))
 
-    # Cancelling deletes the row outright, so a rental already under way would
-    # lose its history and free a boat that is physically out. The handover
-    # happens on RentalDate, so today counts as started. Booking already
-    # refuses past start dates, so no client can create a rental they are then
-    # unable to cancel. PaymentStatus is deliberately not a blocker: there is
-    # no refund model, and blocking PAID would strand paid future bookings.
     if rental.RentalDate <= date.today():
         flash("This rental has already started — contact the office to end it early.", "error")
         return redirect(url_for("report"))
@@ -321,6 +323,69 @@ def cancel_rental(boat_id, rental_date):
         flash("Cancellation failed.", "error")
 
     return redirect(url_for("report"))
+
+
+@app.route("/rentals/<boat_id>/<rental_date>/pay", methods=["GET", "POST"])
+def pay_rental(boat_id, rental_date):
+    """
+    Demo checkout for one unpaid charter.
+    """
+    if "client" not in session:
+        return redirect(url_for("login"))
+
+    try:
+        start = datetime.strptime(rental_date, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Invalid rental date.", "error")
+        return redirect(url_for("report"))
+
+    rental = Rental.query.filter_by(
+        ClientID=session["client"]["ClientID"], BoatID=boat_id, RentalDate=start
+    ).first()
+
+    if rental is None:
+        flash("That rental is not on your list.", "error")
+        return redirect(url_for("report"))
+
+    if rental.PaymentStatus == PAYMENT_PAID:
+        flash("That charter is already paid for.", "warning")
+        return redirect(url_for("report"))
+
+    boat = Boat.query.get(boat_id)
+    form = PaymentForm()
+
+    if form.validate_on_submit():
+        digits = card_digits(form.card_number.data)
+        if digits != TEST_CARD_ACCEPTED:
+            flash("Your card was declined. Try the demo card 4242 4242 4242 4242.",
+                  "error")
+            return redirect(url_for("pay_rental", boat_id=boat_id,
+                                    rental_date=rental_date))
+        try:
+            rental.PaymentStatus = PAYMENT_PAID
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            # No form data in the log line: it holds a card number.
+            app.logger.exception("Failed to record payment for rental %s/%s",
+                                 boat_id, rental_date)
+            flash("Payment could not be recorded. Please try again.", "error")
+            return redirect(url_for("pay_rental", boat_id=boat_id,
+                                    rental_date=rental_date))
+
+        flash(f"Payment received. Boat {boat_id} is confirmed — enjoy the charter!",
+              "success")
+        return redirect(url_for("report"))
+
+    return render_template(
+        "checkout.html",
+        form=form,
+        rental=rental,
+        boat=boat,
+        office=Office.query.get(boat.OfficeID) if boat else None,
+        test_card=TEST_CARD_ACCEPTED,
+        declined_card=TEST_CARD_DECLINED,
+    )
 
 
 @app.route("/analytics")
@@ -411,6 +476,10 @@ def attempt_booking(params):
         flash(f"Boat {boat_id} was just booked by someone else.", "error")
         return False
 
+    boat = next((b for b, _office in available_boats if b.BoatID == boat_id), None)
+    days = (params["end_date"] - params["start_date"]).days
+    total = charter_total(boat.DailyRate if boat else None, days)
+
     try:
         db.session.add(
             Rental(
@@ -418,7 +487,8 @@ def attempt_booking(params):
                 BoatID=boat_id,
                 RentalDate=params["start_date"],
                 RentalEndDate=params["end_date"],
-                PaymentStatus="UNPAID",
+                PaymentStatus=PAYMENT_UNPAID,
+                TotalAmount=total,
             )
         )
         db.session.commit()
@@ -432,8 +502,8 @@ def attempt_booking(params):
         flash("Could not complete the booking. Please try again.", "error")
         return False
 
-    flash(f"Boat {boat_id} successfully booked!", "success")
-    return True
+    flash(f"Boat {boat_id} reserved. Pay to confirm your charter.", "success")
+    return boat_id
 
 
 def parse_date_arg(name, fallback):
@@ -1027,6 +1097,7 @@ def new_boat():
                     Length=form.length.data,
                     Weight=form.weight.data,
                     Horsepower=form.horsepower.data,
+                    DailyRate=form.daily_rate.data,
                     AvailabilityStatus=form.availability_status.data,
                 )
             )
@@ -1058,6 +1129,7 @@ def edit_boat(boat_id):
         form.length.data = boat.Length
         form.weight.data = boat.Weight
         form.horsepower.data = boat.Horsepower
+        form.daily_rate.data = boat.DailyRate
         form.availability_status.data = boat.AvailabilityStatus
         form.boat_type.data = previous_type or "motorboat"
 
@@ -1083,6 +1155,7 @@ def edit_boat(boat_id):
             boat.Length = form.length.data
             boat.Weight = form.weight.data
             boat.Horsepower = form.horsepower.data
+            boat.DailyRate = form.daily_rate.data
             boat.AvailabilityStatus = form.availability_status.data
             write_boat_subclass(boat_id, form, previous_type)
             db.session.commit()

@@ -39,4 +39,18 @@ db = SQLAlchemy(app)
 def inject_csrf():
     return dict(csrf_token=generate_csrf)
 
+
+@app.template_filter("money")
+def format_money(amount):
+    """Euro with thousands separators, or an em dash when there is no price.
+
+    A filter rather than repeated formatting in five templates -- a boat with
+    no DailyRate is a real state (the column is nullable and a manager can
+    leave it blank), and every one of those templates has to render it the
+    same way.
+    """
+    if amount is None:
+        return "—"
+    return f"€{amount:,.2f}"
+
 from boat_rental import routes  # noqa: E402, F401

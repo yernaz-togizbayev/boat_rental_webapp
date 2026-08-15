@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from boat_rental import db
 
 # Boat.AvailabilityStatus values. Kept as constants because the SQL seed data
@@ -6,6 +8,23 @@ from boat_rental import db
 # default collation.
 AVAILABILITY_AVAILABLE = "Available"
 AVAILABILITY_MAINTENANCE = "Maintenance"
+
+# Rental.PaymentStatus values. PENDING is only ever written by the generator;
+# the app moves a rental from UNPAID to PAID and never back.
+PAYMENT_PAID = "PAID"
+PAYMENT_UNPAID = "UNPAID"
+
+CENTS = Decimal("0.01")
+
+
+def charter_total(daily_rate, days):
+    """
+    Rate x nights as Decimal, or None if the boat has no rate.
+    """
+    
+    if daily_rate is None or days <= 0:
+        return None
+    return (Decimal(daily_rate) * days).quantize(CENTS)
 
 
 class Office(db.Model):
@@ -53,6 +72,7 @@ class Boat(db.Model):
     AvailabilityStatus = db.Column(db.String(20))
     Weight = db.Column(db.Float)
     Horsepower = db.Column(db.Integer)
+    DailyRate = db.Column(db.Numeric(10, 2))
 
     rentals = db.relationship("Rental", backref="boat", lazy=True)
     yacht = db.relationship("Yacht", backref="boat_ref", uselist=False)
@@ -69,6 +89,9 @@ class Rental(db.Model):
     RentalDate = db.Column(db.Date, nullable=False)
     RentalEndDate = db.Column(db.Date)
     PaymentStatus = db.Column(db.String(20))
+    # Frozen at booking time from Boat.DailyRate, so a later rate change cannot
+    # rewrite what someone already agreed to pay.
+    TotalAmount = db.Column(db.Numeric(10, 2))
 
     __table_args__ = (db.PrimaryKeyConstraint("ClientID", "BoatID", "RentalDate"),)
 

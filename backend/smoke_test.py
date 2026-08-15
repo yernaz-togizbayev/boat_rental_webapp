@@ -15,6 +15,7 @@ import sqlite3
 import sys
 import tempfile
 from datetime import date, timedelta
+from decimal import Decimal
 
 os.environ.setdefault(
     "DATABASE_URL", "sqlite:///" + os.path.join(tempfile.mkdtemp(), "smoke.db")
@@ -38,9 +39,13 @@ from sqlalchemy import event, text  # noqa: E402
 from sqlalchemy.engine import Engine  # noqa: E402
 
 from boat_rental import app, db  # noqa: E402
+from boat_rental.forms import TEST_CARD_ACCEPTED, TEST_CARD_DECLINED  # noqa: E402
 from boat_rental.models import (  # noqa: E402
     AVAILABILITY_AVAILABLE,
     AVAILABILITY_MAINTENANCE,
+    PAYMENT_PAID,
+    PAYMENT_UNPAID,
+    charter_total,
     Boat,
     Catamaran,
     Client,
@@ -103,15 +108,21 @@ def seed():
     for cid, first in (("C1", "Max"), ("C2", "Olga")):
         db.session.add(Client(ClientID=cid, FirstName=first, LastName="Test",
                               Birthdate=date(1990, 1, 1), Email=f"{cid}@example.com"))
-    # B1 free, B2 under maintenance, B3 in another city, B4 has a NULL length.
+    # B1 free, B2 under maintenance, B3 in another city, B4 has a NULL length
+    # and — deliberately — a NULL DailyRate, because the column is nullable and
+    # a manager can leave it blank.
     db.session.add(Boat(BoatID="B1", OfficeID="O1", Length=10.0, Seats=4, Manufacturer="M1",
-                        AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=900.0, Horsepower=90))
+                        AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=900.0, Horsepower=90,
+                        DailyRate=Decimal("550.00")))
     db.session.add(Boat(BoatID="B2", OfficeID="O1", Length=12.0, Seats=6, Manufacturer="M1",
-                        AvailabilityStatus=AVAILABILITY_MAINTENANCE, Weight=950.0, Horsepower=95))
+                        AvailabilityStatus=AVAILABILITY_MAINTENANCE, Weight=950.0, Horsepower=95,
+                        DailyRate=Decimal("660.00")))
     db.session.add(Boat(BoatID="B3", OfficeID="O2", Length=14.0, Seats=8, Manufacturer="M2",
-                        AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=990.0, Horsepower=99))
+                        AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=990.0, Horsepower=99,
+                        DailyRate=Decimal("770.00")))
     db.session.add(Boat(BoatID="B4", OfficeID="O1", Length=None, Seats=2, Manufacturer="M3",
-                        AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=None, Horsepower=50))
+                        AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=None, Horsepower=50,
+                        DailyRate=None))
 
     # Flushed in dependency order: with foreign keys enforced, each referenced
     # row has to be on disk before the row pointing at it.
@@ -167,6 +178,22 @@ def book(c, boat_id, city="Dubrovnik", start=START, end=END):
     }, follow_redirects=True)
 
 
+# The success flash from a booking, matched on the half only it contains: the
+# booking page itself now says "Reserve for N days", so a looser match would
+# report success on a page where the booking had actually failed.
+BOOKED = "Pay to confirm your charter"
+
+
+def pay(c, boat_id, rental_date=START, card=TEST_CARD_ACCEPTED,
+        expiry="12/34", cvc="123"):
+    return c.post(
+        f"/rentals/{boat_id}/{rental_date.isoformat()}/pay",
+        data={"card_name": "Max Test", "card_number": card,
+              "expiry": expiry, "cvc": cvc, "submit": "Pay now"},
+        follow_redirects=True,
+    )
+
+
 def main():
     with app.app_context():
         seed()
@@ -196,33 +223,81 @@ def main():
             check("search hides boats in other cities", not offered("B3"))
             check("NULL boat length renders as a dash", "—" in body)
 
-        # 3. Booking works and shows on the report
+        # 3. Booking works, prices the charter and hands off to checkout
         with app.test_client() as c:
             as_client(c, "C1")
             search(c, "Dubrovnik")
             body = book(c, "B1").get_data(as_text=True)
-            check("booking succeeds", "successfully booked" in body)
-            check("booking lands on the report page", "Your Rentals" in body)
+            check("booking succeeds", BOOKED in body)
+            check("booking lands on checkout", "Pay for your charter" in body)
         with app.app_context():
             check("rental was persisted", Rental.query.count() == 1)
+            booked = Rental.query.first()
+            nights = (END - START).days
+            check("the charter is priced at rate x nights",
+                  booked.TotalAmount == charter_total(Decimal("550.00"), nights),
+                  f"{booked.TotalAmount} for {nights} nights at 550.00")
+            check("a new booking starts unpaid",
+                  booked.PaymentStatus == PAYMENT_UNPAID, booked.PaymentStatus)
+
+        # 3b. Demo checkout. The card is validated and discarded; the only
+        #     thing payment changes is PaymentStatus.
+        with app.test_client() as c:
+            as_client(c, "C1")
+            body = pay(c, "B1", card="4242 4242 4242 4243").get_data(as_text=True)
+            check("a mistyped card number is rejected",
+                  "not a valid card number" in body, body[:300])
+            check("a failed Luhn check leaves the rental unpaid",
+                  Rental.query.first().PaymentStatus == PAYMENT_UNPAID)
+
+            body = pay(c, "B1", expiry="01/20").get_data(as_text=True)
+            check("an expired card is rejected", "expired" in body, body[:300])
+
+            body = pay(c, "B1", card=TEST_CARD_DECLINED).get_data(as_text=True)
+            check("the decline card is declined", "declined" in body, body[:300])
+            check("a declined payment leaves the rental unpaid",
+                  Rental.query.first().PaymentStatus == PAYMENT_UNPAID)
+
+            body = pay(c, "B1").get_data(as_text=True)
+            check("the demo card pays the charter",
+                  "Payment received" in body, body[:300])
+            check("payment marks the rental PAID",
+                  Rental.query.first().PaymentStatus == PAYMENT_PAID)
+            check("payment does not alter the agreed amount",
+                  Rental.query.first().TotalAmount
+                  == charter_total(Decimal("550.00"), (END - START).days))
+            check("paying lands back on the report", "Your Rentals" in body)
+
+            body = pay(c, "B1").get_data(as_text=True)
+            check("paying an already paid charter is refused",
+                  "already paid" in body, body[:300])
+
+        # 3c. The URL carries only two of the three PK components; ClientID
+        #     comes from the session, so another client cannot even address
+        #     this rental, let alone pay it off.
+        with app.test_client() as c:
+            as_client(c, "C2")
+            body = pay(c, "B1").get_data(as_text=True)
+            check("a client cannot pay another client's rental",
+                  "not on your list" in body, body[:300])
 
         # 4. A different client cannot double-book the same boat/dates
         with app.test_client() as c:
             as_client(c, "C2")
             body = book(c, "B1", start=START + timedelta(days=1)).get_data(as_text=True)
             check("overlapping booking by another client is rejected",
-                  "successfully booked" not in body, body[:200])
+                  BOOKED not in body, body[:200])
         check("no second rental was written", Rental.query.count() == 1)
 
         # 5. Tampering: booking a maintenance boat / a boat in another city
         with app.test_client() as c:
             as_client(c, "C2")
             check("maintenance boat is rejected",
-                  "successfully booked" not in book(c, "B2").get_data(as_text=True))
+                  BOOKED not in book(c, "B2").get_data(as_text=True))
             check("boat from another city is rejected",
-                  "successfully booked" not in book(c, "B3").get_data(as_text=True))
+                  BOOKED not in book(c, "B3").get_data(as_text=True))
             check("past start date is rejected",
-                  "successfully booked" not in book(
+                  BOOKED not in book(
                       c, "B4", start=date.today() - timedelta(days=5),
                       end=date.today() + timedelta(days=1)).get_data(as_text=True))
         check("no rentals added by tampering", Rental.query.count() == 1)
@@ -233,7 +308,7 @@ def main():
             later = END + timedelta(days=10)
             body = book(c, "B1", start=later, end=later + timedelta(days=2)).get_data(as_text=True)
             check("non-overlapping booking of same boat succeeds",
-                  "successfully booked" in body)
+                  BOOKED in body)
 
         # 7. Analytics survives junk input
         with app.test_client() as c:

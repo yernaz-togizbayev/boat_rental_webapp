@@ -10,13 +10,15 @@ INSERT INTO Client (ClientID, FirstName, LastName, Street, ZIP, Country, City, B
 ("C213", "Olga", "Primerova", "Potsdamer Str. 1", "10115", "Germany", "Berlin", "1985-02-15", "olga.primerova@example.com", "+49-30-123-4567", "CAPT-234567"),
 ("C984", "Fabio", "Exemplario", "Via di Vittorio Emanuele II, 1", "00186", "Italy", "Rome", "1992-03-10", "fabio.exemplario@example.com", "+39-06-123-4567", "CAPT-345678");
 
-INSERT INTO Boat (BoatID, OfficeID, Length, Seats, Manufacturer, AvailabilityStatus, Weight, Horsepower) VALUES
-("B100", "O1", 14, 8, "Manufacturer1", "Available", 1200.0, 90),
-("B101", "O2", 20, 12, "Manufacturer2", "Maintenance", 2400.0, 120),
-("B200", "O3", 6, 4, "Manufacturer3", "Available", 900.0, 50),
-("B201", "O5", 10, 6, "Manufacturer3", "Available", 1100.0, 70),
-("B300", "O5", 15, 8, "Manufacturer1", "Available", 1300.0, 50),
-("B301", "O5", 25, 16, "Manufacturer3", "Maintenance", 4000.0, 150);
+-- DailyRate scales with length and type: yachts are dearest per metre,
+-- motorboats cheapest.
+INSERT INTO Boat (BoatID, OfficeID, Length, Seats, Manufacturer, AvailabilityStatus, Weight, Horsepower, DailyRate) VALUES
+("B100", "O1", 14, 8, "Manufacturer1", "Available", 1200.0, 90, 1680.00),
+("B101", "O2", 20, 12, "Manufacturer2", "Maintenance", 2400.0, 120, 2400.00),
+("B200", "O3", 6, 4, "Manufacturer3", "Available", 900.0, 50, 330.00),
+("B201", "O5", 10, 6, "Manufacturer3", "Available", 1100.0, 70, 550.00),
+("B300", "O5", 15, 8, "Manufacturer1", "Available", 1300.0, 50, 1050.00),
+("B301", "O5", 25, 16, "Manufacturer3", "Maintenance", 4000.0, 150, 1750.00);
 
 INSERT INTO Yacht (YachtID, YachtName, HasJacuzzi) VALUES
 ("B100", "Golden Pearl", TRUE),
@@ -30,6 +32,7 @@ INSERT INTO Catamaran (CatamaranID, NrOfCabins, MaxCapacity) VALUES
 ("B300", 4, 16),
 ("B301", 5, 20);
 
-INSERT INTO Rental (ClientID, BoatID, RentalDate, RentalEndDate, PaymentStatus) VALUES
-("C123", "B100", "2025-05-01", "2025-05-03", "PAID"),
-("C213", "B101", "2025-06-10", "2025-06-12", "UNPAID");
+-- TotalAmount is the boat's DailyRate times the nights booked, frozen here.
+INSERT INTO Rental (ClientID, BoatID, RentalDate, RentalEndDate, PaymentStatus, TotalAmount) VALUES
+("C123", "B100", "2025-05-01", "2025-05-03", "PAID", 3360.00),
+("C213", "B101", "2025-06-10", "2025-06-12", "UNPAID", 4800.00);

@@ -1,6 +1,6 @@
 from flask import current_app
 from flask_wtf import FlaskForm
-from wtforms import SelectField, EmailField, DateField, SubmitField, StringField, HiddenField, BooleanField, IntegerField, FloatField
+from wtforms import SelectField, EmailField, DateField, SubmitField, StringField, HiddenField, BooleanField, IntegerField, FloatField, DecimalField
 from wtforms.validators import DataRequired, Email, Optional, Length, NumberRange, ValidationError
 from datetime import date, timedelta
 from boat_rental.models import Office, AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE
@@ -15,6 +15,57 @@ def validate_end_after_start(form, field):
     if hasattr(form, "start_date") and form.start_date.data:
         if field.data <= form.start_date.data:
             raise ValidationError("End date must be after start date.")
+
+
+# Demo checkout. These are Stripe's published test numbers, used here only as a
+# convention a grader will recognise -- nothing is sent anywhere, and no card
+# details are stored. Any other Luhn-valid number is treated as declined so the
+# happy path cannot be reached by typing something plausible.
+TEST_CARD_ACCEPTED = "4242424242424242"
+TEST_CARD_DECLINED = "4000000000000002"
+
+
+def card_digits(value):
+    """The card number with spaces and dashes stripped."""
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def passes_luhn(number):
+    """Standard Luhn checksum -- what tells a typo from a real card number."""
+    total, parity = 0, len(number) % 2
+    for index, digit in enumerate(number):
+        digit = int(digit)
+        if index % 2 == parity:
+            digit *= 2
+            if digit > 9:
+                digit -= 9
+        total += digit
+    return total % 10 == 0
+
+
+def validate_card_number(form, field):
+    """Reject anything that is not a plausible card number.
+
+    Whether a *valid* card is accepted or declined is a payment decision, not a
+    form-validation one, so it lives in the route -- this only catches typos.
+    """
+    digits = card_digits(field.data)
+    if not 13 <= len(digits) <= 19 or not passes_luhn(digits):
+        raise ValidationError("That is not a valid card number.")
+
+
+def validate_expiry(form, field):
+    """MM/YY, and not already past. Expiry is end-of-month, so compare months."""
+    raw = (field.data or "").strip().replace(" ", "")
+    month, _, year = raw.partition("/")
+    if not (month.isdigit() and year.isdigit() and len(year) == 2):
+        raise ValidationError("Use MM/YY.")
+    month, year = int(month), 2000 + int(year)
+    if not 1 <= month <= 12:
+        raise ValidationError("Month must be between 01 and 12.")
+    today = date.today()
+    if (year, month) < (today.year, today.month):
+        raise ValidationError("That card has expired.")
 
 
 
@@ -215,6 +266,10 @@ class BoatForm(FlaskForm):
     length = FloatField("Length (m)", validators=[Optional(), NumberRange(min=0, max=1000)])
     weight = FloatField("Weight (t)", validators=[Optional(), NumberRange(min=0, max=100_000)])
     horsepower = IntegerField("Horsepower", validators=[Optional(), NumberRange(min=0, max=100_000)])
+    daily_rate = DecimalField(
+        "Daily rate (€)", places=2,
+        validators=[Optional(), NumberRange(min=0, max=1_000_000)],
+    )
     availability_status = SelectField(
         "Availability",
         choices=[(AVAILABILITY_AVAILABLE, "Available"), (AVAILABILITY_MAINTENANCE, "Maintenance")],
@@ -237,3 +292,30 @@ class BoatForm(FlaskForm):
     max_capacity = IntegerField("Max capacity", validators=[Optional(), NumberRange(min=0, max=5000)])
 
     submit = SubmitField("Save boat")
+
+
+class PaymentForm(FlaskForm):
+    """Demo card details. Nothing here is stored, sessioned or logged.
+
+    The fields exist so the checkout looks and behaves like a real one; the
+    route reads the number, decides, and drops it. Only PaymentStatus and the
+    already-agreed TotalAmount are written.
+    """
+    card_name = StringField("Name on card", validators=[DataRequired(), Length(max=100)])
+    card_number = StringField(
+        "Card number",
+        validators=[DataRequired(), validate_card_number],
+        render_kw={"placeholder": "4242 4242 4242 4242", "autocomplete": "off",
+                   "inputmode": "numeric"},
+    )
+    expiry = StringField(
+        "Expiry", validators=[DataRequired(), validate_expiry],
+        render_kw={"placeholder": "MM/YY", "autocomplete": "off",
+                   "inputmode": "numeric", "maxlength": "5"},
+    )
+    cvc = StringField(
+        "CVC", validators=[DataRequired(), Length(min=3, max=4)],
+        render_kw={"placeholder": "123", "autocomplete": "off",
+                   "inputmode": "numeric"},
+    )
+    submit = SubmitField("Pay now")

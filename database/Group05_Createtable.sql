@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS Boat (
     AvailabilityStatus VARCHAR(20),
     Weight FLOAT,
     Horsepower INT,
+    -- What the boat costs per day. The charter total is stored on the Rental
+    -- rather than recomputed from this, so changing a rate never rewrites the
+    -- price of a booking someone has already paid.
+    DailyRate DECIMAL(10,2),
 	CONSTRAINT FK_boat_officeID FOREIGN KEY (OfficeID) REFERENCES Office(OfficeID)
 );
 
@@ -84,6 +88,8 @@ CREATE TABLE IF NOT EXISTS Rental (
     RentalDate DATE NOT NULL,
     RentalEndDate DATE,
     PaymentStatus VARCHAR(20),
+    -- Agreed at booking time: DailyRate x days, frozen here.
+    TotalAmount DECIMAL(10,2),
     CONSTRAINT PK_rental PRIMARY KEY (ClientID, BoatID, RentalDate),
     CONSTRAINT FK_rental_clientID FOREIGN KEY (ClientID) REFERENCES Client(ClientID),
     CONSTRAINT FK_rental_boatID FOREIGN KEY (BoatID) REFERENCES Boat(BoatID)

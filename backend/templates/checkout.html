@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="page-head">
+  <p class="eyebrow">Checkout</p>
+  <h1>Pay for your charter</h1>
+  <p>Your boat is reserved. It is confirmed once this is paid.</p>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Booking summary</h2>
+        <dl class="charter-summary">
+          <dt>Boat</dt>
+          <dd>
+            <span class="num">{{ rental.BoatID }}</span>
+            {% if boat and boat.Manufacturer %}· {{ boat.Manufacturer }}{% endif %}
+          </dd>
+
+          {% if office %}
+          <dt>Harbour</dt>
+          <dd>{{ office.City }}</dd>
+          {% endif %}
+
+          <dt>From</dt>
+          <dd><span class="num">{{ rental.RentalDate.strftime('%d %b %Y') }}</span></dd>
+
+          <dt>To</dt>
+          <dd><span class="num">{{ rental.RentalEndDate.strftime('%d %b %Y') if rental.RentalEndDate else "—" }}</span></dd>
+
+          <dt>Daily rate</dt>
+          <dd>{{ boat.DailyRate | money if boat else "—" }}
+            × {{ rental.rental_days }} day{{ 's' if rental.rental_days != 1 }}</dd>
+        </dl>
+
+        <div class="charter-total">
+          <span>Total</span>
+          <strong>{{ rental.TotalAmount | money }}</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="content-section rise">
+      {% if form.errors %}
+        <div class="alert alert-danger">
+          <ul class="mb-0">
+            {% for field, errors in form.errors.items() %}
+              {% for err in errors %}
+                <li>{{ form[field].label.text if field in form else field }}: {{ err }}</li>
+              {% endfor %}
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {# The test cards are on the page on purpose: this is a demo, and nobody
+         should have to read the source to get through checkout. #}
+      <div class="alert alert-info">
+        <strong>Demo payment.</strong> No real card is charged and no card
+        details are stored.
+        <ul class="mb-0 mt-2">
+          <li>Pay: <span class="num">{{ test_card }}</span></li>
+          <li>See a decline: <span class="num">{{ declined_card }}</span></li>
+        </ul>
+        Any future expiry date and any 3-digit CVC will do.
+      </div>
+
+      <form method="post">
+        {{ form.hidden_tag() }}
+        <div class="row g-3">
+          <div class="col-12">
+            {{ form.card_name.label(class="form-label") }}
+            {{ form.card_name(class="form-control") }}
+          </div>
+          <div class="col-12">
+            {{ form.card_number.label(class="form-label") }}
+            {{ form.card_number(class="form-control") }}
+          </div>
+          <div class="col-md-4">
+            {{ form.expiry.label(class="form-label") }}
+            {{ form.expiry(class="form-control") }}
+            {# Filled in by the script below; Bootstrap only shows it once the
+               input carries .is-invalid. #}
+            <div class="invalid-feedback" id="expiry-error"></div>
+          </div>
+          <div class="col-md-4">
+            {{ form.cvc.label(class="form-label") }}
+            {{ form.cvc(class="form-control") }}
+          </div>
+        </div>
+        <div class="mt-4">
+          {{ form.submit(class="btn btn-success btn-lg") }}
+          <a class="btn btn-secondary ms-2" href="{{ url_for('report') }}">Pay later</a>
+        </div>
+      </form>
+
+      <script>
+        // Type "1226" and get "12/26", and say so straight away if the month
+        // cannot exist. Cosmetic only -- validate_expiry re-checks whatever
+        // arrives, since the POST is untrusted.
+        (function () {
+          var expiry = document.querySelector('input[name="expiry"]');
+          var errorBox = document.getElementById('expiry-error');
+          if (!expiry || !errorBox) return;
+
+          function formatExpiry(value, deleting) {
+            var digits = value.replace(/\D/g, '').slice(0, 4);
+            if (digits.length > 2) return digits.slice(0, 2) + '/' + digits.slice(2);
+            // Do not re-add the slash the user is in the middle of deleting,
+            // otherwise backspace cannot get past it.
+            if (digits.length === 2 && !deleting) return digits + '/';
+            return digits;
+          }
+
+          // '' means "nothing to complain about yet" -- a half-typed date is
+          // not an error, or the field turns red on the very first keystroke.
+          function expiryError(value, today) {
+            var digits = value.replace(/\D/g, '');
+            if (digits.length >= 2) {
+              var month = parseInt(digits.slice(0, 2), 10);
+              if (month < 1 || month > 12) return 'There is no month ' + digits.slice(0, 2) + '.';
+            }
+            if (digits.length === 4) {
+              var year = 2000 + parseInt(digits.slice(2), 10);
+              var month2 = parseInt(digits.slice(0, 2), 10);
+              // Expiry runs to the end of its month, so compare months.
+              if (year < today.getFullYear() ||
+                  (year === today.getFullYear() && month2 < today.getMonth() + 1)) {
+                return 'That card has expired.';
+              }
+            }
+            return '';
+          }
+
+          function refresh(deleting) {
+            var formatted = formatExpiry(expiry.value, deleting);
+            if (formatted !== expiry.value) {
+              expiry.value = formatted;
+            }
+            var message = expiryError(expiry.value, new Date());
+            errorBox.textContent = message;
+            expiry.classList.toggle('is-invalid', message !== '');
+          }
+
+          expiry.addEventListener('input', function (event) {
+            refresh((event.inputType || '').indexOf('delete') === 0);
+          });
+          expiry.addEventListener('blur', function () { refresh(true); });
+        })();
+      </script>
+    </div>
+  </div>
+</div>
+{% endblock %}
