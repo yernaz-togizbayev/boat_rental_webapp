@@ -30,6 +30,16 @@ def card_digits(value):
     return "".join(ch for ch in (value or "") if ch.isdigit())
 
 
+def grouped_card(value):
+    """The digits in groups of four, the way a card is printed.
+
+    Display only. The constants above stay bare digits because they are what
+    the route compares against; formatting them in place would break that.
+    """
+    digits = card_digits(value)
+    return " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
+
+
 def passes_luhn(number):
     """Standard Luhn checksum -- what tells a typo from a real card number."""
     total, parity = 0, len(number) % 2

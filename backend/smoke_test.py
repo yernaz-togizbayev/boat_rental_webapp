@@ -403,6 +403,15 @@ def main():
         #     thing payment changes is PaymentStatus.
         with app.test_client() as c:
             as_client(c, "C1")
+            # The demo cards are printed in groups of four, like a real card.
+            shown = c.get(f"/rentals/B1/{START.isoformat()}/pay").get_data(as_text=True)
+            check("the demo card is shown in groups of four",
+                  "4242 4242 4242 4242" in shown, shown[:300])
+            check("the decline card is shown in groups of four",
+                  "4000 0000 0000 0002" in shown, shown[:300])
+            check("the bare digits are not shown instead",
+                  TEST_CARD_ACCEPTED not in shown)
+
             body = pay(c, "B1", card="4242 4242 4242 4243").get_data(as_text=True)
             check("a mistyped card number is rejected",
                   "not a valid card number" in body, body[:300])
@@ -417,8 +426,10 @@ def main():
             check("a declined payment leaves the rental unpaid",
                   Rental.query.first().PaymentStatus == PAYMENT_UNPAID)
 
-            body = pay(c, "B1").get_data(as_text=True)
-            check("the demo card pays the charter",
+            # Paid with the grouped string exactly as printed on the page: a
+            # grader copies what they see, so that is what has to work.
+            body = pay(c, "B1", card="4242 4242 4242 4242").get_data(as_text=True)
+            check("the demo card pays the charter, spaces and all",
                   "Payment received" in body, body[:300])
             check("payment marks the rental PAID",
                   Rental.query.first().PaymentStatus == PAYMENT_PAID)

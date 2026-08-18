@@ -6,7 +6,8 @@ from functools import wraps
 from uuid import uuid4
 
 from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm, OfficeForm, BoatForm, ClientRegistrationForm, SupervisesForm, MaintainsForm, PaymentForm
-from boat_rental.forms import TEST_CARD_ACCEPTED, TEST_CARD_DECLINED, card_digits
+from boat_rental.forms import (TEST_CARD_ACCEPTED, TEST_CARD_DECLINED, card_digits,
+                               grouped_card)
 from boat_rental import app, db
 from boat_rental import assignments, images
 from boat_rental.assignments import (
@@ -406,8 +407,8 @@ def pay_rental(boat_id, rental_date):
         rental=rental,
         boat=boat,
         office=Office.query.get(boat.OfficeID) if boat else None,
-        test_card=TEST_CARD_ACCEPTED,
-        declined_card=TEST_CARD_DECLINED,
+        test_card=grouped_card(TEST_CARD_ACCEPTED),
+        declined_card=grouped_card(TEST_CARD_DECLINED),
         must_pay_now=rental.is_late_booking,
         deadline=rental.pay_by,
         seconds_left=max(0, int((rental.pay_by - datetime.now()).total_seconds())),
