@@ -507,6 +507,33 @@ label.spec-plate { display: block; cursor: pointer; margin: 0; }
   color: var(--ink);
 }
 
+/* The hold clock on a late booking. Reads as a countdown, not a caption. */
+.hold-timer {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  margin: .75rem 0 0;
+}
+.hold-clock {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--step-3);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+  min-width: 4ch;
+}
+.hold-label {
+  font-family: var(--mono);
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--sound);
+}
+.hold-timer.is-urgent .hold-clock { color: var(--magenta); }
+.hold-timer.is-expired .hold-clock,
+.hold-timer.is-expired .hold-label { color: var(--magenta); }
+
 /* Checkout summary */
 .charter-summary { display: grid; grid-template-columns: auto 1fr; gap: .45rem 1rem; margin: 0; }
 .charter-summary dt {

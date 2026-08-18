@@ -24,7 +24,7 @@ DEFAULT_START_TIME = time(9, 0)
 # Payment is due this far ahead of the ride.
 ADVANCE_NOTICE = timedelta(hours=24)
 
-LATE_BOOKING_GRACE = timedelta(minutes=30)
+LATE_BOOKING_GRACE = timedelta(minutes=15)
 
 
 def ride_start(rental_date, start_time=None):

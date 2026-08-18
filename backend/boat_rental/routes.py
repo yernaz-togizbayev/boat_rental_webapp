@@ -408,11 +408,9 @@ def pay_rental(boat_id, rental_date):
         office=Office.query.get(boat.OfficeID) if boat else None,
         test_card=TEST_CARD_ACCEPTED,
         declined_card=TEST_CARD_DECLINED,
-        # Booked inside the 24-hour window: there is no overnight hold to fall
-        # back on, so the page drops "Pay later" and says how little time the
-        # boat is actually held for.
         must_pay_now=rental.is_late_booking,
         deadline=rental.pay_by,
+        seconds_left=max(0, int((rental.pay_by - datetime.now()).total_seconds())),
     )
 
 

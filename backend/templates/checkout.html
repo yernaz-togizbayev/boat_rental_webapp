@@ -5,8 +5,13 @@
   <p class="eyebrow">Checkout</p>
   <h1>Pay for your charter</h1>
   {% if must_pay_now %}
-  <p>This charter starts within 24 hours, so there is no overnight hold — the
-     boat is only kept until <strong>{{ deadline.strftime('%H:%M') }}</strong>.</p>
+  <p>This charter starts within 24 hours, so there is no overnight hold. We are
+     keeping the boat for you until {{ deadline.strftime('%H:%M') }}:</p>
+  <p class="hold-timer" id="hold-timer" role="timer"
+     data-seconds="{{ seconds_left }}">
+    <span class="hold-clock" id="hold-clock">--:--</span>
+    <span class="hold-label">left to pay</span>
+  </p>
   {% else %}
   <p>Your boat is reserved. It is confirmed once this is paid.</p>
   {% endif %}
@@ -121,6 +126,63 @@
       </form>
 
       <script>
+        (function () {
+          var timer = document.getElementById('hold-timer');
+          var clock = document.getElementById('hold-clock');
+          if (!timer || !clock) return;
+
+          var granted = parseInt(timer.dataset.seconds, 10);
+          if (isNaN(granted)) return;
+
+          var deadline = Date.now() + granted * 1000;
+
+          function remaining() {
+            return Math.max(0, Math.round((deadline - Date.now()) / 1000));
+          }
+
+          function mmss(seconds) {
+            var m = Math.floor(seconds / 60);
+            var s = seconds % 60;
+            return m + ':' + (s < 10 ? '0' : '') + s;
+          }
+
+          var expired = false;
+
+          function expire() {
+            // Reachable from both the timer and the visibility handler, and it
+            // must not schedule two reloads.
+            if (expired) return;
+            expired = true;
+            clock.textContent = '0:00';
+            timer.classList.add('is-expired');
+            var pay = document.querySelector('form input[type="submit"], form button[type="submit"]');
+            if (pay) pay.disabled = true;
+            timer.querySelector('.hold-label').textContent =
+              'the hold has expired — releasing the boat';
+            // Let them read that, then let the server have the last word.
+            window.setTimeout(function () { window.location.reload(); }, 2500);
+          }
+
+          function paint() {
+            var left = remaining();
+            if (left <= 0) return expire();
+            clock.textContent = mmss(left);
+            timer.classList.toggle('is-urgent', left <= 180);
+          }
+
+          function tick() {
+            paint();
+            if (expired) return;
+            var toNextSecond = (deadline - Date.now()) % 1000;
+            window.setTimeout(tick, toNextSecond > 0 ? toNextSecond : 1000);
+          }
+          document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) paint();
+          });
+
+          tick();
+        })();
+
         // Type "1226" and get "12/26", and say so straight away if the month
         // cannot exist. Cosmetic only -- validate_expiry re-checks whatever
         // arrives, since the POST is untrusted.

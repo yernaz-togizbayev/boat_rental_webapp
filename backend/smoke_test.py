@@ -296,6 +296,12 @@ def main():
                   f"{booked.pay_by} vs ride {booked.starts_at}")
             check("an advance booking is not a late booking",
                   not booked.is_late_booking)
+            # No countdown on a hold measured in days -- a clock ticking down
+            # from 23:59:59 would read as pressure that is not there.
+            # Matches data-seconds, not "hold-timer": the script that drives the
+            # clock is on every checkout and only the element is conditional.
+            check("an advance booking gets no countdown",
+                  "data-seconds" not in body, body[:300])
 
         with app.test_client() as c:
             as_client(c, "C2")
@@ -307,7 +313,7 @@ def main():
             late = Rental.query.filter_by(BoatID="B4", RentalDate=today).first()
             check("a booking inside 24h is a late booking", late.is_late_booking)
             check("a late booking is held for the grace period only",
-                  late.pay_by == late.CreatedAt + timedelta(minutes=30),
+                  late.pay_by == late.CreatedAt + timedelta(minutes=15),
                   f"{late.pay_by} vs created {late.CreatedAt}")
 
             body = c.get(f"/rentals/B4/{today.isoformat()}/pay").get_data(as_text=True)
@@ -316,6 +322,18 @@ def main():
             check("a late booking says how long the boat is held",
                   "goes back on the market" in flat(body), body[:300])
 
+            # The countdown is seeded with seconds, not a timestamp, so a
+            # browser in another timezone cannot misread it. It must be
+            # positive (pay_rental has already refused a lapsed hold) and can
+            # never exceed the grace period.
+            seconds = re.search(r'data-seconds="(\d+)"', body)
+            check("a late booking renders a countdown", seconds is not None,
+                  body[:300])
+            if seconds:
+                left = int(seconds.group(1))
+                check("the countdown is seeded within the grace period",
+                      0 < left <= 15 * 60, f"{left}s")
+
             # Inside its grace period the hold must survive a sweep -- the boat
             # is being paid for right now.
             search(c, "Dubrovnik", start=today, end=today + timedelta(days=2))
@@ -323,7 +341,7 @@ def main():
                   Rental.query.filter_by(BoatID="B4", RentalDate=today).count() == 1)
 
             # Age it past the grace period; now the sweep must take it.
-            late.CreatedAt = datetime.now() - timedelta(minutes=31)
+            late.CreatedAt = datetime.now() - timedelta(minutes=16)
             db.session.commit()
             body = search(c, "Dubrovnik", start=today,
                           end=today + timedelta(days=2)).get_data(as_text=True)
