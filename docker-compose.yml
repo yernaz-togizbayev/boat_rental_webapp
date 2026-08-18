@@ -7,6 +7,9 @@ services:
       MYSQL_DATABASE: boatdb
       MYSQL_USER: user
       MYSQL_PASSWORD: pass
+      # Same clock as the backend, so a DATETIME written by the app and one
+      # written by SQL mean the same thing.
+      TZ: "${TZ:-Europe/Vienna}"
     ports:
       - "3306:3306"
     volumes:
@@ -33,6 +36,11 @@ services:
       DB_USER: user
       DB_PASSWORD: pass
       SECRET_KEY: dev
+      # Containers default to UTC, which put every payment deadline two hours
+      # behind the wall clock of the harbours this app serves. Rental.CreatedAt
+      # and StartTime are naive DATETIMEs, so "now" has to mean local time.
+      # Override with TZ=... in .env if you are somewhere else.
+      TZ: "${TZ:-Europe/Vienna}"
       # Optional: a free key from unsplash.com/developers gives nicer harbour
       # photos for cities that are not hand-picked. Without it they come from
       # the Wikipedia API instead, so leaving it unset is fine.

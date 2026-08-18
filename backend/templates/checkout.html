@@ -4,7 +4,12 @@
 <div class="page-head">
   <p class="eyebrow">Checkout</p>
   <h1>Pay for your charter</h1>
+  {% if must_pay_now %}
+  <p>This charter starts within 24 hours, so there is no overnight hold — the
+     boat is only kept until <strong>{{ deadline.strftime('%H:%M') }}</strong>.</p>
+  {% else %}
   <p>Your boat is reserved. It is confirmed once this is paid.</p>
+  {% endif %}
 </div>
 
 <div class="row g-4">
@@ -94,8 +99,25 @@
         </div>
         <div class="mt-4">
           {{ form.submit(class="btn btn-success btn-lg") }}
+          {# No "Pay later" on the day of the charter: the hold it would fall
+             back on has already expired, so leaving would lose the boat. #}
+          {% if not must_pay_now %}
           <a class="btn btn-secondary ms-2" href="{{ url_for('report') }}">Pay later</a>
+          {% endif %}
         </div>
+        {% if must_pay_now %}
+        <p class="pay-terms text-danger mt-3 mb-0">
+          Unpaid by {{ deadline.strftime('%H:%M') }} and the boat goes back on
+          the market.
+        </p>
+        {% else %}
+        <p class="pay-terms mt-3 mb-0">
+          You can pay later, but the boat is only held until
+          <strong>{{ deadline.strftime('%d %b, %H:%M') }}</strong> — 24 hours
+          before your charter starts. Unpaid after that, the reservation is
+          cancelled.
+        </p>
+        {% endif %}
       </form>
 
       <script>

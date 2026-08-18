@@ -90,6 +90,12 @@ CREATE TABLE IF NOT EXISTS Rental (
     PaymentStatus VARCHAR(20),
     -- Agreed at booking time: DailyRate x days, frozen here.
     TotalAmount DECIMAL(10,2),
+    -- Handover time on RentalDate. Kept separate from RentalDate so the
+    -- primary key stays a date and a charter still means one boat per day.
+    StartTime TIME,
+    -- When the booking was made. An unpaid booking is only a hold, and the
+    -- deadline for paying it is measured against both the ride and this.
+    CreatedAt DATETIME,
     CONSTRAINT PK_rental PRIMARY KEY (ClientID, BoatID, RentalDate),
     CONSTRAINT FK_rental_clientID FOREIGN KEY (ClientID) REFERENCES Client(ClientID),
     CONSTRAINT FK_rental_boatID FOREIGN KEY (BoatID) REFERENCES Boat(BoatID)

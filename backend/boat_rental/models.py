@@ -1,3 +1,4 @@
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from boat_rental import db
@@ -15,6 +16,47 @@ PAYMENT_PAID = "PAID"
 PAYMENT_UNPAID = "UNPAID"
 
 CENTS = Decimal("0.01")
+
+
+# A charter starts at the morning handover unless a rental says otherwise.
+DEFAULT_START_TIME = time(9, 0)
+
+# Payment is due this far ahead of the ride.
+ADVANCE_NOTICE = timedelta(hours=24)
+
+LATE_BOOKING_GRACE = timedelta(minutes=30)
+
+
+def ride_start(rental_date, start_time=None):
+    """The instant the charter begins."""
+    return datetime.combine(rental_date, start_time or DEFAULT_START_TIME)
+
+
+def payment_deadline(rental_date, start_time=None, created_at=None):
+    """When an unpaid booking stops holding its boat.
+
+    Normally 24 hours before the ride. A booking made *inside* that window
+    cannot be given 24 hours' notice that has already passed, so it gets
+    LATE_BOOKING_GRACE from when it was made instead -- enough to finish
+    paying, and no overnight hold. Whichever is later wins, so booking early
+    never shortens your deadline.
+    """
+    deadline = ride_start(rental_date, start_time) - ADVANCE_NOTICE
+    if created_at is not None and created_at > deadline:
+        return created_at + LATE_BOOKING_GRACE
+    return deadline
+
+
+def booked_late(rental_date, start_time=None, created_at=None):
+    """True if this booking was made too late for the usual 24 hours' notice."""
+    if created_at is None:
+        return False
+    return created_at > ride_start(rental_date, start_time) - ADVANCE_NOTICE
+
+
+def hold_expired(rental_date, start_time=None, created_at=None, now=None):
+    """True once an unpaid booking no longer holds its boat."""
+    return (now or datetime.now()) > payment_deadline(rental_date, start_time, created_at)
 
 
 def charter_total(daily_rate, days):
@@ -89,9 +131,9 @@ class Rental(db.Model):
     RentalDate = db.Column(db.Date, nullable=False)
     RentalEndDate = db.Column(db.Date)
     PaymentStatus = db.Column(db.String(20))
-    # Frozen at booking time from Boat.DailyRate, so a later rate change cannot
-    # rewrite what someone already agreed to pay.
     TotalAmount = db.Column(db.Numeric(10, 2))
+    StartTime = db.Column(db.Time, default=DEFAULT_START_TIME)
+    CreatedAt = db.Column(db.DateTime, default=datetime.now)
 
     __table_args__ = (db.PrimaryKeyConstraint("ClientID", "BoatID", "RentalDate"),)
 
@@ -100,6 +142,23 @@ class Rental(db.Model):
         if self.RentalEndDate and self.RentalDate:
             return (self.RentalEndDate - self.RentalDate).days
         return 0
+
+    @property
+    def starts_at(self):
+        return ride_start(self.RentalDate, self.StartTime)
+
+    @property
+    def pay_by(self):
+        """The instant this booking stops holding its boat."""
+        return payment_deadline(self.RentalDate, self.StartTime, self.CreatedAt)
+
+    @property
+    def is_late_booking(self):
+        """Booked inside the 24-hour window, so held only briefly."""
+        return booked_late(self.RentalDate, self.StartTime, self.CreatedAt)
+
+    def hold_lapsed(self, now=None):
+        return (now or datetime.now()) > self.pay_by
 
 
 class Yacht(db.Model):

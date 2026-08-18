@@ -1,5 +1,5 @@
 import random
-from datetime import timedelta, date
+from datetime import datetime, timedelta, date
 from decimal import Decimal
 from uuid import uuid4
 
@@ -12,6 +12,7 @@ from boat_rental.models import (
     AVAILABILITY_AVAILABLE,
     AVAILABILITY_MAINTENANCE,
     CENTS,
+    DEFAULT_START_TIME,
     charter_total,
     Office,
     Client,
@@ -271,6 +272,9 @@ def do_rentals():
                 RentalEndDate=rental_date + timedelta(days=days),
                 PaymentStatus=random.choice(["PAID", "UNPAID", "PENDING"]),
                 TotalAmount=charter_total(boat.DailyRate, days),
+                StartTime=DEFAULT_START_TIME,
+                CreatedAt=datetime.combine(rental_date, DEFAULT_START_TIME)
+                - timedelta(days=random.randint(2, 40)),
             )
         )
 

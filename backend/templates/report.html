@@ -34,6 +34,12 @@
             <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
               {{ rental.PaymentStatus }}
             </span>
+            {# An unpaid booking is a hold, and holds run out. Say when. #}
+            {% if rental.PaymentStatus != 'PAID' and rental.RentalDate >= today %}
+            <small class="d-block text-muted">
+              pay by {{ rental.pay_by.strftime('%d %b, %H:%M') }}
+            </small>
+            {% endif %}
           </td>
           <td>
             {% if rental.PaymentStatus != 'PAID' %}

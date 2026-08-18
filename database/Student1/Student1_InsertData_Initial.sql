@@ -33,6 +33,8 @@ INSERT INTO Catamaran (CatamaranID, NrOfCabins, MaxCapacity) VALUES
 ("B301", 5, 20);
 
 -- TotalAmount is the boat's DailyRate times the nights booked, frozen here.
-INSERT INTO Rental (ClientID, BoatID, RentalDate, RentalEndDate, PaymentStatus, TotalAmount) VALUES
-("C123", "B100", "2025-05-01", "2025-05-03", "PAID", 3360.00),
-("C213", "B101", "2025-06-10", "2025-06-12", "UNPAID", 4800.00);
+-- StartTime is the 09:00 handover; CreatedAt is when the booking was made,
+-- which is what the payment deadline is measured against.
+INSERT INTO Rental (ClientID, BoatID, RentalDate, RentalEndDate, PaymentStatus, TotalAmount, StartTime, CreatedAt) VALUES
+("C123", "B100", "2025-05-01", "2025-05-03", "PAID", 3360.00, "09:00:00", "2025-04-20 14:32:00"),
+("C213", "B101", "2025-06-10", "2025-06-12", "UNPAID", 4800.00, "09:00:00", "2025-06-01 09:15:00");

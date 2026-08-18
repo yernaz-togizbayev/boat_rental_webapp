@@ -17,6 +17,7 @@ from boat_rental.assignments import (
 from boat_rental.generator import generate_data, stock_office
 from boat_rental.models import (
     AVAILABILITY_AVAILABLE,
+    DEFAULT_START_TIME,
     PAYMENT_PAID,
     PAYMENT_UNPAID,
     charter_total,
@@ -211,8 +212,6 @@ def booking():
         )
         booked_boat = attempt_booking(search_params) if search_params else False
         if booked_boat:
-            # Straight to checkout: the rental exists but is UNPAID, and an
-            # unpaid charter is the one thing the client still has to act on.
             return redirect(url_for(
                 "pay_rental",
                 boat_id=booked_boat,
@@ -238,10 +237,14 @@ def booking():
 
     cities = served_cities()
     city_images, boat_type_images = images.city_and_boat_images(cities)
+    # Conditions deliberately match get_available_boats(): maintenance-only and
+    # unpriced both count as unstocked, because neither can be booked. If these
+    # two drift apart, a harbour card invites a click that finds nothing.
     stocked_cities = {
         c for (c,) in db.session.query(Office.City)
         .join(Boat, Boat.OfficeID == Office.OfficeID)
         .filter(Boat.AvailabilityStatus == AVAILABILITY_AVAILABLE)
+        .filter(Boat.DailyRate.isnot(None))
         .distinct()
     }
 
@@ -351,6 +354,22 @@ def pay_rental(boat_id, rental_date):
         flash("That charter is already paid for.", "warning")
         return redirect(url_for("report"))
 
+    # A hold is dead once its deadline passes, whether or not a search has got
+    # round to sweeping it. CreatedAt is what makes this safe: a booking just
+    # made inside the 24-hour window still has its grace period, so refusing
+    # here cannot lock someone out of a charter they are in the middle of
+    # paying for.
+    if rental.hold_lapsed():
+        db.session.delete(rental)
+        db.session.commit()
+        flash(
+            f"Your reservation of boat {boat_id} expired — it was only held until "
+            f"{rental.pay_by.strftime('%d %b, %H:%M')}. "
+            "The boat is back on the market.",
+            "error",
+        )
+        return redirect(url_for("report"))
+
     boat = Boat.query.get(boat_id)
     form = PaymentForm()
 
@@ -385,6 +404,11 @@ def pay_rental(boat_id, rental_date):
         office=Office.query.get(boat.OfficeID) if boat else None,
         test_card=TEST_CARD_ACCEPTED,
         declined_card=TEST_CARD_DECLINED,
+        # Booked inside the 24-hour window: there is no overnight hold to fall
+        # back on, so the page drops "Pay later" and says how little time the
+        # boat is actually held for.
+        must_pay_now=rental.is_late_booking,
+        deadline=rental.pay_by,
     )
 
 
@@ -489,6 +513,11 @@ def attempt_booking(params):
                 RentalEndDate=params["end_date"],
                 PaymentStatus=PAYMENT_UNPAID,
                 TotalAmount=total,
+                StartTime=DEFAULT_START_TIME,
+                # Set explicitly rather than left to the column default: the
+                # payment deadline is measured from it, so it is part of the
+                # booking, not bookkeeping.
+                CreatedAt=datetime.now(),
             )
         )
         db.session.commit()
@@ -589,7 +618,62 @@ def rental_conflicts(boat_id, start_date, end_date):
     ).scalar()
 
 
+def release_expired_holds():
+    """Delete unpaid bookings whose payment deadline has passed.
+
+    An unpaid booking is a hold, not a charter: it keeps the boat only until
+    the day before the trip. Past that it is released, which is why a same-day
+    booking must be paid there and then -- its deadline is already gone.
+
+    Run from get_available_boats() rather than a scheduler, because this app
+    has no way to run one: availability is read on every search, so that is
+    where an honest answer is needed. PAID rentals are never touched.
+
+    Scoped to holds that still block a boat -- starting today, or already under
+    way and not yet finished. An unpaid charter whose window is entirely in the
+    past is history, not a hold: it blocks nothing, and deleting it would
+    rewrite the record, which is precisely what cancel_rental_as_manager()
+    refuses to do for finished charters.
+    """
+    today = date.today()
+    now = datetime.now()
+    # SQL narrows it to holds that could still matter; the deadline itself is
+    # per-row (it depends on StartTime and CreatedAt) so it is decided here.
+    # The window reaches a day back because a hold for tomorrow can lapse today.
+    candidates = Rental.query.filter(
+        Rental.PaymentStatus != PAYMENT_PAID,
+        Rental.RentalDate <= today + timedelta(days=1),
+        or_(Rental.RentalEndDate.is_(None), Rental.RentalEndDate > today),
+    ).all()
+    expired = [r for r in candidates if r.hold_lapsed(now)]
+    if not expired:
+        return 0
+
+    try:
+        for rental in expired:
+            db.session.delete(rental)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to release expired holds")
+        return 0
+
+    app.logger.info("Released %d unpaid hold(s)", len(expired))
+    return len(expired)
+
+
 def get_available_boats(city, start_date, end_date):
+    """Boats in this city that can actually be chartered for these dates.
+
+    DailyRate is nullable and a manager may leave it blank, but a boat with no
+    price is not ready to rent: it used to reach checkout with a NULL total,
+    where the demo card cheerfully "paid" nothing at all. Filtering here rather
+    than at the template covers all three callers -- the booking page, the
+    availability page, and attempt_booking()'s re-derivation -- so an unpriced
+    boat cannot be booked even by a hand-crafted POST.
+    """
+    release_expired_holds()
+
     conflicting_rentals = select(Rental.BoatID).filter(
         rental_overlap_filter(start_date, end_date)
     )
@@ -600,6 +684,7 @@ def get_available_boats(city, start_date, end_date):
         .join(Office, Boat.OfficeID == Office.OfficeID)
         .filter(Office.City == city)
         .filter(Boat.AvailabilityStatus == AVAILABILITY_AVAILABLE)
+        .filter(Boat.DailyRate.isnot(None))
         .filter(~Boat.BoatID.in_(conflicting_rentals))
         .order_by(Boat.Manufacturer, Boat.BoatID)
         .all()

@@ -14,7 +14,7 @@ import re
 import sqlite3
 import sys
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 os.environ.setdefault(
@@ -43,6 +43,7 @@ from boat_rental.forms import TEST_CARD_ACCEPTED, TEST_CARD_DECLINED  # noqa: E4
 from boat_rental.models import (  # noqa: E402
     AVAILABILITY_AVAILABLE,
     AVAILABILITY_MAINTENANCE,
+    DEFAULT_START_TIME,
     PAYMENT_PAID,
     PAYMENT_UNPAID,
     charter_total,
@@ -108,9 +109,10 @@ def seed():
     for cid, first in (("C1", "Max"), ("C2", "Olga")):
         db.session.add(Client(ClientID=cid, FirstName=first, LastName="Test",
                               Birthdate=date(1990, 1, 1), Email=f"{cid}@example.com"))
-    # B1 free, B2 under maintenance, B3 in another city, B4 has a NULL length
-    # and — deliberately — a NULL DailyRate, because the column is nullable and
-    # a manager can leave it blank.
+    # B1 free, B2 under maintenance, B3 in another city, B4 has a NULL length,
+    # B5 has a NULL DailyRate. B4 and B5 are separate boats on purpose: B4 is
+    # booked all over this suite, and B5 exists only to prove an unpriced boat
+    # never reaches checkout.
     db.session.add(Boat(BoatID="B1", OfficeID="O1", Length=10.0, Seats=4, Manufacturer="M1",
                         AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=900.0, Horsepower=90,
                         DailyRate=Decimal("550.00")))
@@ -122,6 +124,9 @@ def seed():
                         DailyRate=Decimal("770.00")))
     db.session.add(Boat(BoatID="B4", OfficeID="O1", Length=None, Seats=2, Manufacturer="M3",
                         AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=None, Horsepower=50,
+                        DailyRate=Decimal("300.00")))
+    db.session.add(Boat(BoatID="B5", OfficeID="O1", Length=9.0, Seats=3, Manufacturer="M4",
+                        AvailabilityStatus=AVAILABILITY_AVAILABLE, Weight=880.0, Horsepower=70,
                         DailyRate=None))
 
     # Flushed in dependency order: with foreign keys enforced, each referenced
@@ -160,6 +165,16 @@ def search(c, city, start=START, end=END):
         "end_date": end.isoformat(),
         "search": "Search available boats",
     }, follow_redirects=True)
+
+
+def flat(body):
+    """Collapse whitespace so a prose match is not defeated by line wrapping.
+
+    Sentences in the templates wrap across source lines, so "goes back on the
+    market" is not a literal substring of the HTML even though the page says
+    exactly that.
+    """
+    return " ".join(body.split())
 
 
 def rentals_card(body):
@@ -240,6 +255,120 @@ def main():
             check("a new booking starts unpaid",
                   booked.PaymentStatus == PAYMENT_UNPAID, booked.PaymentStatus)
 
+        # 3a. A boat with no DailyRate is not for rent. It used to reach
+        #     checkout with a NULL total, where the demo card "paid" nothing.
+        with app.test_client() as c:
+            as_client(c, "C2")
+            body = search(c, "Dubrovnik").get_data(as_text=True)
+            check("an unpriced boat is not offered",
+                  'value="B5"' not in body, body[:300])
+            body = book(c, "B5").get_data(as_text=True)
+            check("an unpriced boat cannot be booked by a crafted POST",
+                  BOOKED not in body, body[:300])
+            check("no rental was written for the unpriced boat",
+                  Rental.query.filter_by(BoatID="B5").count() == 0)
+
+        # 3a2. An unpaid booking is a hold, and a hold runs out the day before
+        #      the charter. Booking on the day therefore has no hold at all.
+        # C1 owns the advance booking of B1 made above; the URL carries no
+        # ClientID, so it has to be C1 that looks at its checkout.
+        with app.test_client() as c:
+            as_client(c, "C1")
+            body = c.get(f"/rentals/B1/{START.isoformat()}/pay").get_data(as_text=True)
+            check("an advance booking may be paid later", "Pay later" in body)
+            check("an advance booking is told its 24-hour deadline",
+                  "24 hours" in body, body[:300])
+            booked = Rental.query.filter_by(BoatID="B1", RentalDate=START).first()
+            check("the deadline is 24h before the ride",
+                  booked.pay_by == booked.starts_at - timedelta(hours=24),
+                  f"{booked.pay_by} vs ride {booked.starts_at}")
+            check("an advance booking is not a late booking",
+                  not booked.is_late_booking)
+
+        with app.test_client() as c:
+            as_client(c, "C2")
+            today = date.today()
+            # Booked for today: inside the 24-hour window, so it gets the short
+            # grace period rather than an overnight hold.
+            search(c, "Dubrovnik", start=today, end=today + timedelta(days=2))
+            book(c, "B4", start=today, end=today + timedelta(days=2))
+            late = Rental.query.filter_by(BoatID="B4", RentalDate=today).first()
+            check("a booking inside 24h is a late booking", late.is_late_booking)
+            check("a late booking is held for the grace period only",
+                  late.pay_by == late.CreatedAt + timedelta(minutes=30),
+                  f"{late.pay_by} vs created {late.CreatedAt}")
+
+            body = c.get(f"/rentals/B4/{today.isoformat()}/pay").get_data(as_text=True)
+            check("a late booking cannot be paid later",
+                  "Pay later" not in body, body[:300])
+            check("a late booking says how long the boat is held",
+                  "goes back on the market" in flat(body), body[:300])
+
+            # Inside its grace period the hold must survive a sweep -- the boat
+            # is being paid for right now.
+            search(c, "Dubrovnik", start=today, end=today + timedelta(days=2))
+            check("a hold inside its grace period survives the sweep",
+                  Rental.query.filter_by(BoatID="B4", RentalDate=today).count() == 1)
+
+            # Age it past the grace period; now the sweep must take it.
+            late.CreatedAt = datetime.now() - timedelta(minutes=31)
+            db.session.commit()
+            body = search(c, "Dubrovnik", start=today,
+                          end=today + timedelta(days=2)).get_data(as_text=True)
+            check("a hold past its grace period is released",
+                  Rental.query.filter_by(BoatID="B4", RentalDate=today).count() == 0)
+            check("the released boat is bookable again",
+                  'value="B4"' in body, body[:300])
+
+            # A hold whose deadline has not passed must survive the sweep, and
+            # a paid charter must never be released.
+            check("the advance hold survived the sweep",
+                  Rental.query.filter_by(BoatID="B1", RentalDate=START).count() == 1)
+
+        # 3a3. A lapsed hold cannot be paid even if no search has swept it yet.
+        #      Written straight to the database so nothing has had the chance,
+        #      which is exactly the situation the sweep alone would miss.
+        with app.test_client() as c:
+            as_client(c, "C2")
+            lapsed = date.today()
+            db.session.add(Rental(ClientID="C2", BoatID="B3", RentalDate=lapsed,
+                                  RentalEndDate=lapsed + timedelta(days=2),
+                                  PaymentStatus=PAYMENT_UNPAID,
+                                  TotalAmount=charter_total(Decimal("770.00"), 2),
+                                  StartTime=DEFAULT_START_TIME,
+                                  # Made yesterday, so both the 24-hour cutoff
+                                  # and any grace period are long gone.
+                                  CreatedAt=datetime.now() - timedelta(days=1)))
+            db.session.commit()
+            check("the lapsed hold is in the database",
+                  Rental.query.filter_by(BoatID="B3", RentalDate=lapsed).count() == 1)
+
+            body = pay(c, "B3", rental_date=lapsed).get_data(as_text=True)
+            check("paying a lapsed hold is refused", "expired" in body, body[:300])
+            check("the lapsed hold is released on the attempt",
+                  Rental.query.filter_by(BoatID="B3", RentalDate=lapsed).count() == 0)
+            check("the lapsed hold was never marked paid",
+                  Rental.query.filter_by(BoatID="B3", PaymentStatus=PAYMENT_PAID).count() == 0)
+
+        # 3a4. The same rule must not break late booking: paying one straight
+        #      away, inside its grace period, has to work.
+        with app.test_client() as c:
+            as_client(c, "C2")
+            today = date.today()
+            search(c, "Dubrovnik", start=today, end=today + timedelta(days=2))
+            book(c, "B4", start=today, end=today + timedelta(days=2))
+            body = pay(c, "B4", rental_date=today).get_data(as_text=True)
+            check("a late booking can still be paid immediately",
+                  "Payment received" in body, body[:300])
+            check("the late charter is paid",
+                  Rental.query.filter_by(BoatID="B4", RentalDate=today,
+                                         PaymentStatus=PAYMENT_PAID).count() == 1)
+            # And once paid it is a charter, not a hold: no sweep may take it.
+            search(c, "Dubrovnik", start=today, end=today + timedelta(days=2))
+            check("a paid charter is never released by the sweep",
+                  Rental.query.filter_by(BoatID="B4", RentalDate=today,
+                                         PaymentStatus=PAYMENT_PAID).count() == 1)
+
         # 3b. Demo checkout. The card is validated and discarded; the only
         #     thing payment changes is PaymentStatus.
         with app.test_client() as c:
@@ -281,13 +410,18 @@ def main():
             check("a client cannot pay another client's rental",
                   "not on your list" in body, body[:300])
 
+        # Counted rather than hardcoded: the hold and payment sections above
+        # legitimately leave rentals behind, and these checks are about what
+        # the *next* action writes, not about the total.
+        rentals_before = Rental.query.count()
+
         # 4. A different client cannot double-book the same boat/dates
         with app.test_client() as c:
             as_client(c, "C2")
             body = book(c, "B1", start=START + timedelta(days=1)).get_data(as_text=True)
             check("overlapping booking by another client is rejected",
                   BOOKED not in body, body[:200])
-        check("no second rental was written", Rental.query.count() == 1)
+        check("no second rental was written", Rental.query.count() == rentals_before)
 
         # 5. Tampering: booking a maintenance boat / a boat in another city
         with app.test_client() as c:
@@ -300,7 +434,7 @@ def main():
                   BOOKED not in book(
                       c, "B4", start=date.today() - timedelta(days=5),
                       end=date.today() + timedelta(days=1)).get_data(as_text=True))
-        check("no rentals added by tampering", Rental.query.count() == 1)
+        check("no rentals added by tampering", Rental.query.count() == rentals_before)
 
         # 6. A non-overlapping booking of the same boat still works
         with app.test_client() as c:
@@ -497,6 +631,7 @@ def main():
             body = c.post("/manager/boats/new", data={
                 "office_id": split.OfficeID, "manufacturer": "Lagoon",
                 "seats": "8", "length": "13.5", "weight": "1200", "horsepower": "150",
+                "daily_rate": "980.00",
                 "availability_status": AVAILABILITY_AVAILABLE,
                 "boat_type": "catamaran", "nr_of_cabins": "4", "max_capacity": "10",
                 "submit": "Save boat",
@@ -559,6 +694,7 @@ def main():
             c.post(f"/manager/boats/{new_boat_row.BoatID}/edit", data={
                 "office_id": split.OfficeID, "manufacturer": "Lagoon",
                 "seats": "8", "length": "13.5", "weight": "1200", "horsepower": "150",
+                "daily_rate": "980.00",
                 "availability_status": AVAILABILITY_AVAILABLE,
                 "boat_type": "yacht", "yacht_name": "Sea Star", "has_jacuzzi": "y",
                 "submit": "Save boat",
