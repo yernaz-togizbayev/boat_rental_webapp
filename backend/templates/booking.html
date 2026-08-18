@@ -108,7 +108,7 @@
 </script>
 {% endif %}
 
-{% if available_boats %}
+{% if display_boats %}
 <div class="content-section rise">
   <div class="page-head">
     <div class="head-row">
@@ -117,100 +117,52 @@
           {{ search_params.start_date.strftime('%d %b') }} – {{ search_params.end_date.strftime('%d %b %Y') }}
           · {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}
         </p>
-        <h2>Available Boats in {{ search_params.city }}</h2>
+        <h2>Boats in {{ search_params.city }}</h2>
       </div>
-      <p class="text-muted mb-0">{{ available_boats|length }} free for these dates</p>
+      <p class="text-muted mb-0">{{ available_boats|length }} of {{ display_boats|length }} free for these dates</p>
     </div>
   </div>
 
-  {% if booking_form %}
+  {# The whole fleet is listed, not just what is free: a page showing three
+     boats reads as a small company, and a taken boat tells you the harbour is
+     worth trying on other dates. Unavailable ones are greyed and carry no
+     radio at all, so they cannot be selected or submitted. #}
   <form method="post">
-    {# hidden_tag() emits csrf_token plus the rental_date,
-       rental_end_date and city hidden fields. #}
-    {{ booking_form.hidden_tag() }}
+    {% if booking_form %}
+      {# hidden_tag() emits csrf_token plus the rental_date,
+         rental_end_date and city hidden fields. #}
+      {{ booking_form.hidden_tag() }}
+      {% for error in booking_form.boat_id.errors %}
+        <div class="alert alert-danger">{{ error }}</div>
+      {% endfor %}
+    {% endif %}
 
-    {% for error in booking_form.boat_id.errors %}
-      <div class="alert alert-danger">{{ error }}</div>
-    {% endfor %}
-
-    {# Each card is a label wrapping a real radio, so picking a boat is one
-       click on the boat itself and needs no JavaScript. The name is still
-       boat_id, so BoatSelectionForm.pre_validate rejects a tampered value
-       exactly as it did when this was a <select>. #}
     <fieldset class="plate-grid row g-3 mb-4">
       <legend class="visually-hidden">Choose a boat</legend>
-      {% for boat, office in available_boats %}
+      {% for boat, office, status in display_boats %}
       <div class="col-lg-4 col-md-6">
         {% set kind = 'yacht' if boat.yacht else 'motorboat' if boat.motorboat else 'catamaran' if boat.catamaran else none %}
+        {% if status == 'available' %}
+        {# A label wrapping a real radio, so picking a boat is one click on the
+           boat itself and needs no JavaScript. The name is still boat_id, so
+           BoatSelectionForm.pre_validate rejects a tampered value. #}
         <label class="spec-plate">
           <input class="plate-radio" type="radio" name="boat_id" value="{{ boat.BoatID }}"
-                 {{ 'checked' if booking_form.boat_id.data == boat.BoatID }}>
-          {% if kind and boat_type_images.get(kind) %}
-          <img class="plate-photo" src="{{ boat_type_images[kind] }}" alt="A {{ kind }}" loading="lazy">
-          {% endif %}
+                 {{ 'checked' if booking_form and booking_form.boat_id.data == boat.BoatID }}>
           <span class="plate-tick" aria-hidden="true">Selected</span>
-          {# Boat models are named for their length in feet -- a "Lagoon 42" is
-             a 42-footer -- so builder + feet reads like the real product name
-             and gives the imperial-minded a size they recognise. #}
-          <div class="plate-head">
-            <span class="maker">{{ boat.Manufacturer }}{% if boat.Length %} {{ (boat.Length * 3.281)|round|int }}{% endif %}</span>
-            {% if boat.yacht %}<span class="badge bg-warning">Yacht</span>
-            {% elif boat.motorboat %}<span class="badge bg-success">Motorboat</span>
-            {% elif boat.catamaran %}<span class="badge bg-primary">Catamaran</span>
-            {% else %}<span class="badge bg-secondary">Boat</span>{% endif %}
-          </div>
-          {# Guests, cabins and length: what someone choosing a holiday boat
-             actually weighs. Horsepower told a renter nothing. #}
-          <div class="soundings">
-            <div class="sounding">
-              <span class="figure">{{ boat.Seats }}</span>
-              <span class="unit">Guests</span>
-            </div>
-            {% if boat.catamaran and boat.catamaran.NrOfCabins %}
-            <div class="sounding">
-              <span class="figure">{{ boat.catamaran.NrOfCabins }}</span>
-              <span class="unit">Cabins</span>
-            </div>
-            {% endif %}
-            <div class="sounding">
-              <span class="figure {{ 'is-null' if boat.Length is none }}">{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</span>
-              <span class="unit">Metres</span>
-            </div>
-          </div>
-          {# One line of the detail only this type of boat has. Every value here
-             was already in the database and never shown. #}
-          {% if boat.yacht and (boat.yacht.YachtName or boat.yacht.HasJacuzzi) %}
-          <p class="plate-detail">
-            {%- if boat.yacht.YachtName %}Named “{{ boat.yacht.YachtName }}”{% endif -%}
-            {%- if boat.yacht.YachtName and boat.yacht.HasJacuzzi %} · {% endif -%}
-            {%- if boat.yacht.HasJacuzzi %}jacuzzi on deck{% endif -%}
-          </p>
-          {% elif boat.motorboat and boat.motorboat.EngineType %}
-          <p class="plate-detail">
-            {{ boat.motorboat.FuelType }} {{ boat.motorboat.EngineType|lower }} engine
-          </p>
-          {% elif boat.catamaran and boat.catamaran.MaxCapacity %}
-          <p class="plate-detail">
-            Sleeps {{ boat.Seats }} · up to {{ boat.catamaran.MaxCapacity }} for a day sail
-          </p>
-          {% endif %}
-          {# The rate is the comparable figure, but the total for these exact
-             dates is the one that decides the booking, so show both. #}
-          {% if boat.DailyRate is not none %}
-          <div class="plate-price">
-            <span class="rate">{{ boat.DailyRate | money }} / day</span>
-            <span class="total">{{ (boat.DailyRate * rental_days) | money }}</span>
-          </div>
-          {% endif %}
-          <div class="plate-head mt-3 mb-0">
-            <span class="hull-id">{{ boat.BoatID }}</span>
-            <span class="hull-id">{{ office.City }}</span>
-          </div>
+          {% include "partials/boat_plate_body.html" %}
         </label>
+        {% else %}
+        <div class="spec-plate is-unavailable" aria-disabled="true">
+          <span class="plate-status">{{ 'Booked' if status == 'booked' else 'In maintenance' }}</span>
+          {% include "partials/boat_plate_body.html" %}
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
     </fieldset>
 
+    {% if booking_form %}
     <div class="book-bar">
       <p class="book-hint">Pick a boat above, then book it.</p>
       <button type="submit" name="book" value="true" class="btn btn-success btn-lg js-confirm"
@@ -218,6 +170,16 @@
         Reserve for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}
       </button>
     </div>
+    {% else %}
+    {# The fleet is on screen but none of it is free, so say so here rather
+       than leaving the grid looking clickable-but-broken. #}
+    <div class="alert alert-info mb-0">
+      <h4>Nothing free for these dates</h4>
+      <p>Every boat in <strong>{{ search_params.city }}</strong> is taken from
+         {{ search_params.start_date.strftime('%d %b') }} to {{ search_params.end_date.strftime('%d %b %Y') }}.</p>
+      <p>Try a shorter stay, later dates, or another harbour.</p>
+    </div>
+    {% endif %}
   </form>
   <script>
     document.querySelectorAll('.js-confirm').forEach(function (btn) {
@@ -228,16 +190,14 @@
       });
     });
   </script>
-  {% endif %}
 </div>
 
 {% elif search_params.city %}
 <div class="content-section rise">
   <div class="alert alert-info mb-0">
-    <h4>No boats available</h4>
-    <p>Nothing is free in <strong>{{ search_params.city }}</strong> from
-       {{ search_params.start_date.strftime('%d %b') }} to {{ search_params.end_date.strftime('%d %b %Y') }}.</p>
-    <p>Try a shorter stay, later dates, or another harbour.</p>
+    <h4>No boats here yet</h4>
+    <p><strong>{{ search_params.city }}</strong> has no boats on its books.</p>
+    <p>Try another harbour.</p>
   </div>
 </div>
 {% endif %}

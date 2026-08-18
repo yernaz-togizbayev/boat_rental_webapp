@@ -1,4 +1,5 @@
 import random
+from collections import defaultdict
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 from uuid import uuid4
@@ -226,18 +227,20 @@ def stock_office(office_id, count=6):
     return [build_boat(f"B{uuid4().hex[:8]}", office_id) for _ in range(count)]
 
 
+MAINTENANCE_SHARE = 0.12
+
+
 def do_boats(offices):
     """
     200 boats spread over every office, each guaranteed one bookable boat.
     """
-    availability_status = [AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE]
-
     for i in range(200):
         first_round = i < len(offices)
+        under_maintenance = not first_round and random.random() < MAINTENANCE_SHARE
         build_boat(
             f"B{i + 1}",
             offices[i % len(offices)].OfficeID,
-            AVAILABILITY_AVAILABLE if first_round else random.choice(availability_status),
+            AVAILABILITY_MAINTENANCE if under_maintenance else AVAILABILITY_AVAILABLE,
         )
 
 
@@ -254,24 +257,28 @@ def do_rentals():
         )
         return
 
-    seen = set()
-    for _ in range(10):
+
+    booked_windows = defaultdict(list)
+    for _ in range(400):
         client_id = random.choice(clients).ClientID
         boat = random.choice(boats)
         rental_date = date.today() + timedelta(days=random.randint(-30, 30))
-        if (client_id, boat.BoatID, rental_date) in seen:
-            continue
-        seen.add((client_id, boat.BoatID, rental_date))
+        end_date = rental_date + timedelta(days=random.randint(1, 10))
 
-        days = random.randint(1, 14)
+        if any(rental_date < seen_end and end_date > seen_start
+               for seen_start, seen_end in booked_windows[boat.BoatID]):
+            continue
+        booked_windows[boat.BoatID].append((rental_date, end_date))
+
+        status = random.choices(["PAID", "UNPAID", "PENDING"], weights=[80, 12, 8])[0]
         db.session.add(
             Rental(
                 ClientID=client_id,
                 BoatID=boat.BoatID,
                 RentalDate=rental_date,
-                RentalEndDate=rental_date + timedelta(days=days),
-                PaymentStatus=random.choice(["PAID", "UNPAID", "PENDING"]),
-                TotalAmount=charter_total(boat.DailyRate, days),
+                RentalEndDate=end_date,
+                PaymentStatus=status,
+                TotalAmount=charter_total(boat.DailyRate, (end_date - rental_date).days),
                 StartTime=DEFAULT_START_TIME,
                 CreatedAt=datetime.combine(rental_date, DEFAULT_START_TIME)
                 - timedelta(days=random.randint(2, 40)),

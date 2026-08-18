@@ -102,10 +102,12 @@ def seed():
 
     db.session.add(Office(OfficeID="O1", Street="Quay 1", Country="HR", City="Dubrovnik", ZIP="20000"))
     db.session.add(Office(OfficeID="O2", Street="Quay 2", Country="GR", City="Mykonos", ZIP="84600"))
-    # Nice has an office but only a boat under maintenance -> always empty.
+    # Nice has an office but only a boat under maintenance -> nothing bookable,
+    # though the boat is still listed (greyed) because it has a rate.
     db.session.add(Office(OfficeID="O3", Street="Quay 3", Country="FR", City="Nice", ZIP="06000"))
     db.session.add(Boat(BoatID="B9", OfficeID="O3", Length=8.0, Seats=3, Manufacturer="M9",
-                        AvailabilityStatus=AVAILABILITY_MAINTENANCE, Weight=800.0, Horsepower=60))
+                        AvailabilityStatus=AVAILABILITY_MAINTENANCE, Weight=800.0, Horsepower=60,
+                        DailyRate=Decimal("440.00")))
     for cid, first in (("C1", "Max"), ("C2", "Olga")):
         db.session.add(Client(ClientID=cid, FirstName=first, LastName="Test",
                               Birthdate=date(1990, 1, 1), Email=f"{cid}@example.com"))
@@ -220,10 +222,18 @@ def main():
             body = r.get_data(as_text=True)
             check("empty search renders instead of 500", r.status_code == 200,
                   f"status {r.status_code}")
-            check("empty search shows the 'no boats' message",
-                  "No boats available" in body)
+            check("a city with nothing free says so",
+                  "Nothing free for these dates" in flat(body), body[:300])
+            # The maintenance boat is shown rather than hidden -- greyed, with
+            # no radio, so it cannot be selected or submitted.
+            check("the unavailable boat is still listed", "B9" in body)
+            check("it is marked as under maintenance",
+                  "In maintenance" in body, body[:300])
+            check("it carries no radio to select",
+                  'value="B9"' not in body, body[:300])
 
-        # 2. A normal search lists the free boat and hides the unavailable ones
+        # 2. A search offers the free boats, shows the unbookable ones greyed,
+        #    and never offers a boat from another city.
         with app.test_client() as c:
             as_client(c, "C1")
             body = search(c, "Dubrovnik").get_data(as_text=True)
@@ -233,9 +243,11 @@ def main():
             def offered(boat_id):
                 return f'value="{boat_id}"' in body
 
-            check("search lists the available boat", offered("B1"))
-            check("search hides the maintenance boat", not offered("B2"))
-            check("search hides boats in other cities", not offered("B3"))
+            check("search offers the available boat", offered("B1"))
+            check("search does not offer the maintenance boat", not offered("B2"))
+            check("the maintenance boat is still shown", "B2" in body)
+            check("search does not offer boats in other cities", not offered("B3"))
+            check("a boat in another city is not shown at all", "B3" not in body)
             check("NULL boat length renders as a dash", "—" in body)
 
         # 3. Booking works, prices the charter and hands off to checkout
@@ -415,6 +427,15 @@ def main():
         # the *next* action writes, not about the total.
         rentals_before = Rental.query.count()
 
+        # 3d. Someone else's booking greys the boat out rather than hiding it,
+        #     so the harbour still looks like it has a fleet.
+        with app.test_client() as c:
+            as_client(c, "C2")
+            body = search(c, "Dubrovnik").get_data(as_text=True)
+            check("a boat booked by someone else is still listed", "B1" in body)
+            check("it is marked as booked", "Booked" in body, body[:300])
+            check("it cannot be selected", 'value="B1"' not in body, body[:300])
+
         # 4. A different client cannot double-book the same boat/dates
         with app.test_client() as c:
             as_client(c, "C2")
@@ -486,7 +507,7 @@ def main():
             body = c.get(
                 f"/booking?city=Dubrovnik&start_date={START}&end_date={END}"
             ).get_data(as_text=True)
-            check("bookmarkable GET search returns results", "Available Boats in" in body)
+            check("bookmarkable GET search returns results", "Boats in Dubrovnik" in body)
 
         # 8b. The two m:n relations are editable from the manager UI. Must run
         #     before section 9 deletes M2 and section 11 turns S1 into a manager.

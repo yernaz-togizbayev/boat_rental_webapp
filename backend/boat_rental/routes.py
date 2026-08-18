@@ -203,6 +203,7 @@ def booking():
     search_form = BookingSearchForm()
     booking_form = None
     available_boats = []
+    display_boats = []
     search_params = {}
     rental_days = 0
 
@@ -231,7 +232,9 @@ def booking():
             search_form.end_date.data = search_params["end_date"]
 
     if search_params:
-        available_boats = get_available_boats(**search_params)
+        display_boats = get_boats_with_status(**search_params)
+        available_boats = [(b, o) for b, o, status in display_boats
+                           if status == "available"]
         booking_form = build_booking_form(search_params, available_boats)
         rental_days = (search_params["end_date"] - search_params["start_date"]).days
 
@@ -253,6 +256,7 @@ def booking():
         search_form=search_form,
         booking_form=booking_form,
         available_boats=available_boats,
+        display_boats=display_boats,
         search_params=search_params,
         rental_days=rental_days,
         cities=cities,
@@ -660,6 +664,47 @@ def release_expired_holds():
 
     app.logger.info("Released %d unpaid hold(s)", len(expired))
     return len(expired)
+
+
+def get_boats_with_status(city, start_date, end_date):
+    """[(boat, office, status)] for the whole rentable fleet in a city.
+
+    status is "available", "booked" or "maintenance". The booking page lists
+    all three rather than only what is free: a page showing two boats reads as
+    a company with two boats, and a taken one tells you the harbour is worth
+    trying on other dates.
+
+    Bookability is decided by the same rental_overlap_filter() that
+    get_available_boats() uses, so the greyed-out set and the bookable set
+    cannot disagree. Unpriced boats are left out entirely -- an incomplete
+    record is not a boat a client should see at all.
+    """
+    release_expired_holds()
+
+    taken = {
+        boat_id for (boat_id,) in db.session.query(Rental.BoatID)
+        .filter(rental_overlap_filter(start_date, end_date))
+    }
+    rows = (
+        db.session.query(Boat, Office)
+        .select_from(Boat)
+        .join(Office, Boat.OfficeID == Office.OfficeID)
+        .filter(Office.City == city)
+        .filter(Boat.DailyRate.isnot(None))
+        .order_by(Boat.Manufacturer, Boat.BoatID)
+        .all()
+    )
+
+    result = []
+    for boat, office in rows:
+        if boat.AvailabilityStatus != AVAILABILITY_AVAILABLE:
+            status = "maintenance"
+        elif boat.BoatID in taken:
+            status = "booked"
+        else:
+            status = "available"
+        result.append((boat, office, status))
+    return result
 
 
 def get_available_boats(city, start_date, end_date):
