@@ -301,7 +301,10 @@ class PaymentForm(FlaskForm):
     route reads the number, decides, and drops it. Only PaymentStatus and the
     already-agreed TotalAmount are written.
     """
-    card_name = StringField("Name on card", validators=[DataRequired(), Length(max=100)])
+    card_name = StringField(
+        "Name on card", validators=[DataRequired(), Length(max=100)],
+        render_kw={"placeholder": "John Doe", "autocomplete": "off"},
+    )
     card_number = StringField(
         "Card number",
         validators=[DataRequired(), validate_card_number],
