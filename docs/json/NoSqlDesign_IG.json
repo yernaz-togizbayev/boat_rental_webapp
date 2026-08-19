@@ -1,0 +1,33 @@
+{
+  "_id": "C123",
+  "firstName": "Max",
+  "lastName": "Mustermann",
+  "street": "Bergergasse 8-10/7/15",
+  "zip": "1080",
+  "country": "Austria",
+  "city": "Vienna",
+  "birthdate": "1990-01-01",
+  "email": "max.mustermann@example.com",
+  "mobileNumber": "+43-555-123-4567",
+  "captainLicenseNumber": "CAPT-123456",
+  "rentals": [
+    {
+      "boatID": "B100",
+      "rentalDate": "2026-05-01",
+      "rentalEndDate": "2026-05-03",
+      "startTime": "09:00",
+      "createdAt": "2026-04-12T18:24:00",
+      "totalAmount": "2400.00",
+      "paymentStatus": "PAID"
+    },
+    {
+      "boatID": "B234",
+      "rentalDate": "2026-10-12",
+      "rentalEndDate": "2026-10-15",
+      "startTime": "09:00",
+      "createdAt": "2026-08-19T20:05:00",
+      "totalAmount": "1650.00",
+      "paymentStatus": "UNPAID"
+    }
+  ]
+}
