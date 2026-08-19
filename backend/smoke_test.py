@@ -258,6 +258,9 @@ def main():
 
             # A yacht's jacuzzi is stated either way. Shown only when present,
             # "no jacuzzi" and "we never recorded it" looked identical.
+            check("booking still carries the shared date-sync script",
+                  "drags the end date to the day after" in body, body[:300])
+
             check("a yacht with a jacuzzi says so",
                   "jacuzzi on deck" in body, body[:300])
             check("a yacht without one says that too",
@@ -548,6 +551,10 @@ def main():
                          f"&end_date={quiet + timedelta(days=2)}").get_data(as_text=True)
             check("availability has a jacuzzi column", "<th>Jacuzzi</th>" in body,
                   body[:300])
+            # The same start/end pair as the booking search, so it gets the
+            # same auto-advance -- from the one shared partial, not a copy.
+            check("availability advances the end date with the start",
+                  "drags the end date to the day after" in body, body[:300])
             check("availability marks the yacht that has one",
                   'has-extra">Yes' in body, body[:300])
             check("availability marks the yacht that has not",
