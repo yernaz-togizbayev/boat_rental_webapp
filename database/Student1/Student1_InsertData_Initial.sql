@@ -28,9 +28,10 @@ INSERT INTO Motorboat (MotorboatID, EngineType, FuelType) VALUES
 ("B200", "Inboard", "Diesel"),
 ("B201", "Outboard", "Benzin");
 
-INSERT INTO Catamaran (CatamaranID, NrOfCabins, MaxCapacity) VALUES
-("B300", 4, 16),
-("B301", 5, 20);
+-- One of each, so the "has a jacuzzi" and "has not" cases are both seeded.
+INSERT INTO Catamaran (CatamaranID, NrOfCabins, MaxCapacity, HasJacuzzi) VALUES
+("B300", 4, 16, FALSE),
+("B301", 5, 20, TRUE);
 
 -- TotalAmount is the boat's DailyRate times the nights booked, frozen here.
 -- StartTime is the 09:00 handover; CreatedAt is when the booking was made,

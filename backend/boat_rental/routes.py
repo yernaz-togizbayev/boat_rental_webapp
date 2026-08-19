@@ -1172,6 +1172,7 @@ def write_boat_subclass(boat_id, form, previous_type=None):
                 db.session.add(row)
             row.NrOfCabins = form.nr_of_cabins.data
             row.MaxCapacity = form.max_capacity.data
+            row.HasJacuzzi = bool(form.has_jacuzzi.data)
         case _:
             raise ValueError(f"Unknown boat type: {new_type}")
 
@@ -1302,6 +1303,7 @@ def edit_boat(boat_id):
                 c = Catamaran.query.get(boat_id)
                 form.nr_of_cabins.data = c.NrOfCabins
                 form.max_capacity.data = c.MaxCapacity
+                form.has_jacuzzi.data = bool(c.HasJacuzzi)
 
     if form.validate_on_submit():
         try:

@@ -214,6 +214,10 @@ def build_boat(boat_id, office_id, availability=AVAILABILITY_AVAILABLE):
             CatamaranID=boat_id,
             NrOfCabins=max(2, round(length / 3.5)),
             MaxCapacity=seats + random.randint(4, 10),
+            # The yacht rule scaled to a hull half the size: deck space for
+            # one starts near the top of the 11-18 m range, and plenty of big
+            # catamarans still go without.
+            HasJacuzzi=length >= 14 and random.random() < 0.4,
         )
 
     db.session.add(concrete_boat)

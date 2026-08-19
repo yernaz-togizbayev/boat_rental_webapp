@@ -121,6 +121,19 @@ class Boat(db.Model):
     motorboat = db.relationship("Motorboat", backref="boat_ref", uselist=False)
     catamaran = db.relationship("Catamaran", backref="boat_ref", uselist=False)
 
+    @property
+    def jacuzzi(self):
+        """True, False, or None for a boat that cannot have one.
+
+        A yacht and a catamaran each carry the column; a motorboat has no
+        such row, and None keeps "not that kind of boat" a different answer
+        from "no jacuzzi". Here rather than in a template because the booking
+        cards and the availability table both ask, and the two must agree on
+        which hulls the question even applies to.
+        """
+        row = self.yacht or self.catamaran
+        return bool(row.HasJacuzzi) if row is not None else None
+
 
 class Rental(db.Model):
     __tablename__ = "Rental"
@@ -184,6 +197,7 @@ class Catamaran(db.Model):
     )
     NrOfCabins = db.Column(db.Integer)
     MaxCapacity = db.Column(db.Integer)
+    HasJacuzzi = db.Column(db.Boolean)
 
 
 class Employee(db.Model):

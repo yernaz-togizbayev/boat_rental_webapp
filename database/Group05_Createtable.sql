@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS Catamaran (
     CatamaranID VARCHAR(50) PRIMARY KEY,
     NrOfCabins INT,
     MaxCapacity INT,
+    HasJacuzzi BOOLEAN,
     CONSTRAINT FK_catamaran_boat FOREIGN KEY (CatamaranID) REFERENCES Boat(BoatID)
 );
 

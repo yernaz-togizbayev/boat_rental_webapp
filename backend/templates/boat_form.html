@@ -37,6 +37,13 @@
 
       <div id="type-yacht" class="row g-3">
         <div class="col-md-4">{{ form.yacht_name.label(class="form-label") }} {{ form.yacht_name(class="form-control") }}</div>
+      </div>
+
+      {# A yacht and a catamaran can both have one; a motorboat cannot. The
+         field is rendered once, outside the per-type blocks, because two
+         inputs of the same name would both post and the checked one would
+         win whichever type happened to be on screen. #}
+      <div id="extra-jacuzzi" class="row g-3">
         <div class="col-md-3 d-flex align-items-end">{{ form.has_jacuzzi() }} {{ form.has_jacuzzi.label(class="ms-2") }}</div>
       </div>
 
@@ -59,11 +66,17 @@
 </div>
 
 <script>
+// Which types can have a jacuzzi. write_boat_subclass() only reads the field
+// for these two, so a box left ticked from another type is discarded anyway.
+const JACUZZI_TYPES = ['yacht', 'catamaran'];
+
 function toggleBoatTypeFields() {
   const type = document.querySelector('[name="boat_type"]').value;
   for (const t of ['yacht', 'motorboat', 'catamaran']) {
     document.getElementById('type-' + t).style.display = type === t ? '' : 'none';
   }
+  document.getElementById('extra-jacuzzi').style.display =
+    JACUZZI_TYPES.includes(type) ? '' : 'none';
 }
 document.addEventListener('DOMContentLoaded', toggleBoatTypeFields);
 </script>

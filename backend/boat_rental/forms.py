@@ -291,8 +291,12 @@ class BoatForm(FlaskForm):
     
     # Yacht extras
     yacht_name = StringField("Yacht name", validators=[Optional(), Length(max=50)])
+
+    # Shared by yacht and catamaran -- both can have one, a motorboat cannot.
+    # One field rather than two: two inputs of the same name would both post,
+    # and the checked one would win whichever type was on screen.
     has_jacuzzi = BooleanField("Has jacuzzi?")
-    
+
     # Motorboat extras
     engine_type = StringField("Engine type", validators=[Optional(), Length(max=50)])
     fuel_type = StringField("Fuel type", validators=[Optional(), Length(max=50)])

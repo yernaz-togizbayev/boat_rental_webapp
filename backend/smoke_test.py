@@ -140,6 +140,12 @@ def seed():
     # already exist rather than added as new ones, so no count moves.
     db.session.add(Yacht(YachtID="B1", YachtName="Golden Test", HasJacuzzi=True))
     db.session.add(Yacht(YachtID="B4", YachtName=None, HasJacuzzi=False))
+    # A catamaran can have one too. B2 is the Dubrovnik maintenance boat, so it
+    # also proves the greyed card states it; B3 is available in Mykonos.
+    db.session.add(Catamaran(CatamaranID="B2", NrOfCabins=3, MaxCapacity=12,
+                             HasJacuzzi=True))
+    db.session.add(Catamaran(CatamaranID="B3", NrOfCabins=4, MaxCapacity=14,
+                             HasJacuzzi=False))
     db.session.flush()
 
     # M1 supervises M2; M2 supervises staff S1 -> deleting M1 or M2 used to fail.
@@ -221,6 +227,19 @@ def pay(c, boat_id, rental_date=START, card=TEST_CARD_ACCEPTED,
 def main():
     with app.app_context():
         seed()
+
+        # 0. Boat.jacuzzi is the one definition of which hulls can have one.
+        #    Three answers, not two: a motorboat is not a "no".
+        check("a yacht with a jacuzzi reports True",
+              Boat.query.get("B1").jacuzzi is True)
+        check("a yacht without one reports False",
+              Boat.query.get("B4").jacuzzi is False)
+        check("a catamaran with a jacuzzi reports True",
+              Boat.query.get("B2").jacuzzi is True)
+        check("a catamaran without one reports False",
+              Boat.query.get("B3").jacuzzi is False)
+        check("a boat that cannot have one reports None",
+              Boat.query.get("B5").jacuzzi is None)
 
         # 1. Search with no available boats -> used to be a 500 (UnboundLocalError)
         with app.test_client() as c:
@@ -559,9 +578,16 @@ def main():
                   'has-extra">Yes' in body, body[:300])
             check("availability marks the yacht that has not",
                   'no-extra">No' in body, body[:300])
-            # A dash means "not a yacht", which is not the same as "no jacuzzi".
+            # A dash means "not that kind of boat", not the same as "no".
             check("a boat that cannot have one is neither a yes nor a no",
                   body.count('no-extra">No') == 1, body[:300])
+
+            # Mykonos holds B3, a catamaran without one -- so the column is
+            # answering for catamarans and not only for yachts.
+            body = c.get(f"/analytics?city=Mykonos&start_date={quiet}"
+                         f"&end_date={quiet + timedelta(days=2)}").get_data(as_text=True)
+            check("availability answers the jacuzzi for a catamaran too",
+                  'no-extra">No' in body, body[:300])
 
             body = c.get("/analytics?city=Atlantis").get_data(as_text=True)
             check("an unknown harbour is called out, not reported as empty",
@@ -824,6 +850,41 @@ def main():
               Catamaran.query.get(new_boat_row.BoatID) is None)
         check("new subclass row created on type change",
               Yacht.query.get(new_boat_row.BoatID) is not None)
+
+        # Switching to a catamaran must carry the jacuzzi with it: the field is
+        # shared with the yacht block, so a bug there is a checkbox that either
+        # never saves or saves against the wrong type.
+        with app.test_client() as c:
+            as_manager(c, "M1")
+            c.post(f"/manager/boats/{new_boat_row.BoatID}/edit", data={
+                "office_id": split.OfficeID, "manufacturer": "Lagoon",
+                "seats": "8", "length": "13.5", "weight": "1200", "horsepower": "150",
+                "daily_rate": "980.00",
+                "availability_status": AVAILABILITY_AVAILABLE,
+                "boat_type": "catamaran", "nr_of_cabins": "4",
+                "max_capacity": "12", "has_jacuzzi": "y",
+                "submit": "Save boat",
+            }, follow_redirects=True)
+        check("a catamaran can be given a jacuzzi from the manager form",
+              Catamaran.query.get(new_boat_row.BoatID).HasJacuzzi is True)
+        check("the yacht row went when the type changed",
+              Yacht.query.get(new_boat_row.BoatID) is None)
+
+        # And unticking it must clear it, not just fail to set it.
+        with app.test_client() as c:
+            as_manager(c, "M1")
+            c.post(f"/manager/boats/{new_boat_row.BoatID}/edit", data={
+                "office_id": split.OfficeID, "manufacturer": "Lagoon",
+                "seats": "8", "length": "13.5", "weight": "1200", "horsepower": "150",
+                "daily_rate": "980.00",
+                "availability_status": AVAILABILITY_AVAILABLE,
+                "boat_type": "catamaran", "nr_of_cabins": "4",
+                "max_capacity": "12",
+                "submit": "Save boat",
+            }, follow_redirects=True)
+        check("unticking the jacuzzi clears it",
+              Catamaran.query.get(new_boat_row.BoatID).HasJacuzzi is False)
+
 
         # Delete guards: neither of these may take referenced rows with them.
         with app.test_client() as c:

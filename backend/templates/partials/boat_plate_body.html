@@ -34,25 +34,29 @@
 </div>
 {# One line of the detail only this type of boat has. Every value here was
    already in the database and never shown. #}
-{% if boat.yacht %}
-{# The jacuzzi is stated either way. Shown only when present, its absence was
-   indistinguishable from a yacht whose record simply says nothing, and it is
-   the one thing people pick a yacht for. #}
+{# The jacuzzi is stated either way, for the two hulls that can have one.
+   Shown only when present, its absence was indistinguishable from a boat
+   whose record simply says nothing, and it is a thing people choose on. #}
+{% set prose = (boat.yacht and boat.yacht.YachtName)
+            or (boat.motorboat and boat.motorboat.EngineType)
+            or (boat.catamaran and boat.catamaran.MaxCapacity) %}
+{% if prose or boat.jacuzzi is not none %}
 <p class="plate-detail">
-  {%- if boat.yacht.YachtName %}Named “{{ boat.yacht.YachtName }}” · {% endif -%}
-  {%- if boat.yacht.HasJacuzzi -%}
-  <span class="has-extra">jacuzzi on deck</span>
-  {%- else -%}
-  <span class="no-extra">no jacuzzi</span>
-  {%- endif -%}
-</p>
-{% elif boat.motorboat and boat.motorboat.EngineType %}
-<p class="plate-detail">
+  {%- if boat.yacht and boat.yacht.YachtName -%}
+  Named “{{ boat.yacht.YachtName }}”
+  {%- elif boat.motorboat and boat.motorboat.EngineType -%}
   {{ boat.motorboat.FuelType }} {{ boat.motorboat.EngineType|lower }} engine
-</p>
-{% elif boat.catamaran and boat.catamaran.MaxCapacity %}
-<p class="plate-detail">
+  {%- elif boat.catamaran and boat.catamaran.MaxCapacity -%}
   Sleeps {{ boat.Seats }} · up to {{ boat.catamaran.MaxCapacity }} for a day sail
+  {%- endif -%}
+  {%- if boat.jacuzzi is not none -%}
+    {%- if prose %} · {% endif -%}
+    {%- if boat.jacuzzi -%}
+    <span class="has-extra">jacuzzi on deck</span>
+    {%- else -%}
+    <span class="no-extra">no jacuzzi</span>
+    {%- endif -%}
+  {%- endif -%}
 </p>
 {% endif %}
 {# The rate is the comparable figure, but the total for these exact dates is
