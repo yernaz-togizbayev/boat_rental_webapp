@@ -519,6 +519,14 @@ def main():
             check("every served city is offered exactly once",
                   offered == ["Dubrovnik", "Mykonos", "Nice"], f"{offered}")
 
+            # The dropdown the script actually opens is our own list, and it
+            # has to carry the same cities as the datalist fallback -- two
+            # sources of the same options is two chances to drift.
+            drop = re.search(r'<ul class="combo-list".*?</ul>', body, re.S)
+            in_dropdown = re.findall(r'data-value="([^"]+)"', drop.group(0)) if drop else []
+            check("the dropdown offers the same cities as the fallback",
+                  in_dropdown == offered, f"{in_dropdown} vs {offered}")
+
             body = c.get("/analytics?city=Atlantis").get_data(as_text=True)
             check("an unknown harbour is called out, not reported as empty",
                   "don&#39;t have a harbour in Atlantis" in body, body[:400])

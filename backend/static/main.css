@@ -207,6 +207,59 @@ a:hover { color: var(--magenta); text-decoration-color: currentColor; }
 /* Filter/search bars sit on paper so they read as controls, not content. */
 .card.filter-card { background: var(--paper); box-shadow: none; }
 
+/* Harbour combobox: a text field that also drops down. The list is ours
+   rather than a native datalist, so it can open in full while the field is
+   already filled and can match on substrings. */
+.combo { position: relative; }
+.combo-input { padding-right: 2rem; }
+
+.combo-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--sound);
+  font-size: var(--step--1);
+  line-height: 1;
+  cursor: pointer;
+}
+.combo-toggle:hover { color: var(--ink); }
+
+.combo-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: .25rem;
+  list-style: none;
+  max-height: 15rem;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.combo-list[hidden] { display: none; }
+
+.combo-option {
+  padding: .35rem .55rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--step-0);
+  color: var(--ink);
+  cursor: pointer;
+}
+.combo-option[hidden] { display: none; }
+.combo-option:hover,
+.combo-option.is-active { background: var(--shallow); }
+
 /* --------------------------------------------------------------------------
    Signature: the sounding strip
 

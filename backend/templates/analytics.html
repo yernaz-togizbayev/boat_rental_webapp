@@ -12,17 +12,35 @@
     <form method="get" class="row g-3 align-items-end">
       <div class="col-md-4">
         <label for="city" class="form-label">Harbour</label>
-        {# Typable as well as pickable. A manager can open a harbour in any
-           city, so this list grows without bound and scrolling it for one name
-           is slower than typing three letters. A datalist narrows as you type
-           using the browser's own matching, so there is no JS copy of the
-           option list to fall out of step with the server's. #}
-        <input list="harbours" name="city" id="city" class="form-control"
-               value="{{ current_filter }}" autocomplete="off"
-               placeholder="Type or pick a harbour">
-        <datalist id="harbours">
-          {% for city in cities %}<option value="{{ city }}"></option>{% endfor %}
-        </datalist>
+        {# Typable *and* pickable. A manager can open a harbour in any city, so
+           this list grows without bound and scrolling it for one name is
+           slower than typing three letters -- but the whole list still has to
+           be browsable by someone who does not know what we serve.
+
+           A bare datalist could not do both: the field is pre-filled with the
+           current city, so the browser filtered its own suggestions down to
+           that one value and clicking the field appeared to do nothing. The
+           list below is ours, so opening it always offers everything.
+
+           The datalist stays as the no-JS fallback; the script removes it when
+           it takes over, or a browser would show two dropdowns at once. #}
+        <div class="combo" id="harbour-combo">
+          <input list="harbours" name="city" id="city" class="form-control combo-input"
+                 value="{{ current_filter }}" autocomplete="off"
+                 placeholder="Type or pick a harbour"
+                 role="combobox" aria-expanded="false" aria-autocomplete="list"
+                 aria-controls="harbour-list">
+          <button type="button" class="combo-toggle" id="harbour-toggle"
+                  tabindex="-1" aria-label="Show all harbours">▾</button>
+          <datalist id="harbours">
+            {% for city in cities %}<option value="{{ city }}"></option>{% endfor %}
+          </datalist>
+          <ul class="combo-list" id="harbour-list" role="listbox" hidden>
+            {% for city in cities %}
+            <li class="combo-option" role="option" data-value="{{ city }}">{{ city }}</li>
+            {% endfor %}
+          </ul>
+        </div>
       </div>
       <div class="col-md-3">
         <label for="start_date" class="form-label">From</label>
@@ -119,4 +137,116 @@
   </div>
   {% endif %}
 </div>
+
+<script>
+  // Harbour combobox: click the field (or the chevron) for the whole list,
+  // type to narrow it. Matching is substring, not prefix, so "brov" finds
+  // Dubrovnik -- which is the half a native datalist does not do.
+  (function () {
+    var combo = document.getElementById('harbour-combo');
+    var input = document.getElementById('city');
+    var list = document.getElementById('harbour-list');
+    var toggle = document.getElementById('harbour-toggle');
+    if (!combo || !input || !list || !toggle) return;
+
+    var options = Array.prototype.slice.call(list.querySelectorAll('.combo-option'));
+    if (!options.length) return;
+
+    // From here the custom list is the dropdown, so the native one must go.
+    input.removeAttribute('list');
+
+    var active = -1;
+
+    function matches(value, query) {
+      return value.toLowerCase().indexOf(query.trim().toLowerCase()) !== -1;
+    }
+
+    function shown() {
+      return options.filter(function (o) { return !o.hidden; });
+    }
+
+    function highlight(index) {
+      var visible = shown();
+      options.forEach(function (o) { o.classList.remove('is-active'); });
+      // -1 means "nothing chosen yet", so Enter submits instead of picking.
+      active = index < 0 || index >= visible.length ? -1 : index;
+      if (active >= 0) {
+        visible[active].classList.add('is-active');
+        visible[active].scrollIntoView({ block: 'nearest' });
+      }
+    }
+
+    function open(query) {
+      options.forEach(function (o) {
+        o.hidden = !matches(o.dataset.value, query || '');
+      });
+      var any = shown().length > 0;
+      list.hidden = !any;
+      input.setAttribute('aria-expanded', any ? 'true' : 'false');
+      highlight(-1);
+    }
+
+    function close() {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      highlight(-1);
+    }
+
+    function choose(option) {
+      input.value = option.dataset.value;
+      close();
+    }
+
+    // Clicking the field shows everything, whatever is already in it. Filtering
+    // by the current value is what made the native version look broken.
+    input.addEventListener('focus', function () { open(''); });
+    input.addEventListener('click', function () { open(''); });
+    toggle.addEventListener('click', function () {
+      if (list.hidden) { input.focus(); open(''); } else { close(); }
+    });
+
+    input.addEventListener('input', function () { open(input.value); });
+
+    input.addEventListener('keydown', function (event) {
+      var visible = shown();
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          if (list.hidden) return open('');
+          highlight(active + 1 >= visible.length ? 0 : active + 1);
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          if (list.hidden) return open('');
+          highlight(active - 1 < 0 ? visible.length - 1 : active - 1);
+          break;
+        case 'Enter':
+          // Only swallow the Enter that is picking something; otherwise it
+          // must still submit the form.
+          if (!list.hidden && active >= 0) {
+            event.preventDefault();
+            choose(visible[active]);
+          }
+          break;
+        case 'Escape':
+          close();
+          break;
+      }
+    });
+
+    // mousedown, not click: blur fires first and would hide the option before
+    // the click could land on it.
+    options.forEach(function (option) {
+      option.addEventListener('mousedown', function (event) {
+        event.preventDefault();
+        choose(option);
+      });
+    });
+
+    input.addEventListener('blur', close);
+    document.addEventListener('click', function (event) {
+      if (!combo.contains(event.target)) close();
+    });
+  })();
+</script>
 {% endblock %}
