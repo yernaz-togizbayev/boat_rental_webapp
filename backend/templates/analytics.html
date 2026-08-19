@@ -12,13 +12,17 @@
     <form method="get" class="row g-3 align-items-end">
       <div class="col-md-4">
         <label for="city" class="form-label">Harbour</label>
-        <select name="city" id="city" class="form-select">
-          {% for office in offices %}
-          <option value="{{ office.City }}" {% if office.City == current_filter %}selected{% endif %}>
-            {{ office.City }}
-          </option>
-          {% endfor %}
-        </select>
+        {# Typable as well as pickable. A manager can open a harbour in any
+           city, so this list grows without bound and scrolling it for one name
+           is slower than typing three letters. A datalist narrows as you type
+           using the browser's own matching, so there is no JS copy of the
+           option list to fall out of step with the server's. #}
+        <input list="harbours" name="city" id="city" class="form-control"
+               value="{{ current_filter }}" autocomplete="off"
+               placeholder="Type or pick a harbour">
+        <datalist id="harbours">
+          {% for city in cities %}<option value="{{ city }}"></option>{% endfor %}
+        </datalist>
       </div>
       <div class="col-md-3">
         <label for="start_date" class="form-label">From</label>
@@ -74,13 +78,15 @@
     <table class="table table-striped">
       <thead>
         <tr>
-          <th>Hull</th>
-          <th>Manufacturer</th>
-          <th>LOA m</th>
-          <th>Berths</th>
-          <th>Weight kg</th>
-          <th>HP</th>
+          {# Guests, length and price: what someone choosing a boat weighs.
+             Weight and horsepower were in the table because the columns
+             existed, not because a renter can act on them. #}
+          <th>Boat</th>
+          <th>Builder</th>
           <th>Type</th>
+          <th>Guests</th>
+          <th>Length</th>
+          <th>Rate / day</th>
           <th>Harbour</th>
         </tr>
       </thead>
@@ -89,16 +95,15 @@
         <tr>
           <td><span class="num">{{ boat.BoatID }}</span></td>
           <td>{{ boat.Manufacturer }}</td>
-          <td><span class="num">{{ "%.1f"|format(boat.Length) if boat.Length is not none else "—" }}</span></td>
-          <td><span class="num">{{ boat.Seats }}</span></td>
-          <td><span class="num">{{ "%.0f"|format(boat.Weight) if boat.Weight is not none else "—" }}</span></td>
-          <td><span class="num">{{ boat.Horsepower }}</span></td>
           <td>
             {% if boat.yacht %}<span class="badge bg-warning">Yacht</span>
             {% elif boat.motorboat %}<span class="badge bg-success">Motorboat</span>
             {% elif boat.catamaran %}<span class="badge bg-primary">Catamaran</span>
             {% else %}<span class="badge bg-secondary">Boat</span>{% endif %}
           </td>
+          <td><span class="num">{{ boat.Seats }}</span></td>
+          <td><span class="num">{{ "%.1f"|format(boat.Length) ~ " m" if boat.Length is not none else "—" }}</span></td>
+          <td><span class="num">{{ boat.DailyRate | money }}</span></td>
           <td>{{ office.City }}</td>
         </tr>
         {% endfor %}

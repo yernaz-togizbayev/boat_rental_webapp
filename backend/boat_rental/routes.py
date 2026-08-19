@@ -426,8 +426,23 @@ def analytics():
     if "client" not in session:
         return redirect(url_for("login"))
 
-    offices = Office.query.all()
-    filtered_city = request.args.get("city") or "Dubrovnik"
+    # served_cities() rather than every Office row: two offices in one city
+    # would otherwise list it twice, and it is the shared definition of where
+    # we operate, already alphabetical.
+    cities = served_cities()
+    default_city = "Dubrovnik" if "Dubrovnik" in cities else (cities[0] if cities else "")
+
+    # The harbour field is a datalist, so it can be typed into as well as
+    # picked from -- which means an unrecognised city can arrive and has to be
+    # said out loud. Reporting "0 free in Atlantis" would read as a fleet
+    # problem rather than a typo. Matched case-insensitively, because a field
+    # you type into invites "dubrovnik".
+    requested = (request.args.get("city") or "").strip()
+    by_fold = {city.casefold(): city for city in cities}
+    filtered_city = by_fold.get(requested.casefold(), default_city)
+    if requested and requested.casefold() not in by_fold:
+        flash(f"We don't have a harbour in {requested} — showing {filtered_city}.",
+              "warning")
 
     default_start = date.today()
     default_end = default_start + timedelta(days=7)
@@ -457,7 +472,7 @@ def analytics():
         total_boats=total_boats,
         available_count=available_count,
         rentals_in_period=rentals_in_period,
-        offices=offices,
+        cities=cities,
     )
 
 

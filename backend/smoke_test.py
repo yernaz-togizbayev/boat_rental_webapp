@@ -505,6 +505,33 @@ def main():
             check("analytics no longer defaults to the stale 2025 window",
                   "2025-07-01" not in r2.get_data(as_text=True))
 
+            # The harbour picker is a datalist, so it can be typed into. That
+            # makes an unrecognised city reachable, and it must be named as a
+            # typo rather than reported as an empty fleet.
+            body = r2.get_data(as_text=True)
+            check("the harbour picker is typable", 'list="harbours"' in body, body[:300])
+            # Read the datalist itself rather than the whole page, so the order
+            # being asserted is the order the browser will offer.
+            block = re.search(r'<datalist id="harbours">(.*?)</datalist>', body, re.S)
+            offered = re.findall(r'<option value="([^"]+)"', block.group(1)) if block else []
+            check("the harbour list is alphabetical", offered == sorted(offered),
+                  f"{offered}")
+            check("every served city is offered exactly once",
+                  offered == ["Dubrovnik", "Mykonos", "Nice"], f"{offered}")
+
+            body = c.get("/analytics?city=Atlantis").get_data(as_text=True)
+            check("an unknown harbour is called out, not reported as empty",
+                  "don&#39;t have a harbour in Atlantis" in body, body[:400])
+            check("an unknown harbour falls back to a real one",
+                  "Available Boats in Dubrovnik" in flat(body), body[:400])
+
+            # Typing into a field invites lowercase; it must not look unserved.
+            body = c.get("/analytics?city=dubrovnik").get_data(as_text=True)
+            check("a lowercased harbour is matched, not rejected",
+                  "don&#39;t have a harbour" not in body, body[:400])
+            check("a lowercased harbour is shown in its proper spelling",
+                  "Available Boats in Dubrovnik" in flat(body), body[:400])
+
         # 7b. The "Rentals in <city>" card must follow the city filter. It used
         #     to be an unjoined count over every Rental, so it showed the same
         #     fleet-wide number whatever city was selected.
