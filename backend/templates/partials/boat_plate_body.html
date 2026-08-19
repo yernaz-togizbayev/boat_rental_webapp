@@ -34,11 +34,17 @@
 </div>
 {# One line of the detail only this type of boat has. Every value here was
    already in the database and never shown. #}
-{% if boat.yacht and (boat.yacht.YachtName or boat.yacht.HasJacuzzi) %}
+{% if boat.yacht %}
+{# The jacuzzi is stated either way. Shown only when present, its absence was
+   indistinguishable from a yacht whose record simply says nothing, and it is
+   the one thing people pick a yacht for. #}
 <p class="plate-detail">
-  {%- if boat.yacht.YachtName %}Named “{{ boat.yacht.YachtName }}”{% endif -%}
-  {%- if boat.yacht.YachtName and boat.yacht.HasJacuzzi %} · {% endif -%}
-  {%- if boat.yacht.HasJacuzzi %}jacuzzi on deck{% endif -%}
+  {%- if boat.yacht.YachtName %}Named “{{ boat.yacht.YachtName }}” · {% endif -%}
+  {%- if boat.yacht.HasJacuzzi -%}
+  <span class="has-extra">jacuzzi on deck</span>
+  {%- else -%}
+  <span class="no-extra">no jacuzzi</span>
+  {%- endif -%}
 </p>
 {% elif boat.motorboat and boat.motorboat.EngineType %}
 <p class="plate-detail">

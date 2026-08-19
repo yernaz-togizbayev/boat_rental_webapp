@@ -751,6 +751,12 @@ def get_available_boats(city, start_date, end_date):
         .filter(Boat.AvailabilityStatus == AVAILABILITY_AVAILABLE)
         .filter(Boat.DailyRate.isnot(None))
         .filter(~Boat.BoatID.in_(conflicting_rentals))
+        # Both callers render the boat's type, and the yacht row also carries
+        # the jacuzzi. Left lazy that is an extra query per boat and up to
+        # three for one with no subclass row, on a page that lists a whole
+        # harbour.
+        .options(joinedload(Boat.yacht), joinedload(Boat.motorboat),
+                 joinedload(Boat.catamaran))
         .order_by(Boat.Manufacturer, Boat.BoatID)
         .all()
     )

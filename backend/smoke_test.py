@@ -135,6 +135,13 @@ def seed():
     # row has to be on disk before the row pointing at it.
     db.session.flush()
 
+    # Two yachts in Dubrovnik, one with a jacuzzi and one without, so the
+    # pages can be checked for stating it both ways. Attached to boats that
+    # already exist rather than added as new ones, so no count moves.
+    db.session.add(Yacht(YachtID="B1", YachtName="Golden Test", HasJacuzzi=True))
+    db.session.add(Yacht(YachtID="B4", YachtName=None, HasJacuzzi=False))
+    db.session.flush()
+
     # M1 supervises M2; M2 supervises staff S1 -> deleting M1 or M2 used to fail.
     for eid, first, salary in (("M1", "Boss", 9000), ("M2", "Anna", 6000), ("S1", "Jane", 3000)):
         db.session.add(Employee(EmployeeID=eid, OfficeID="O1", FirstName=first, LastName="X",
@@ -248,6 +255,13 @@ def main():
             check("the maintenance boat is still shown", "B2" in body)
             check("search does not offer boats in other cities", not offered("B3"))
             check("a boat in another city is not shown at all", "B3" not in body)
+
+            # A yacht's jacuzzi is stated either way. Shown only when present,
+            # "no jacuzzi" and "we never recorded it" looked identical.
+            check("a yacht with a jacuzzi says so",
+                  "jacuzzi on deck" in body, body[:300])
+            check("a yacht without one says that too",
+                  "no jacuzzi" in body, body[:300])
             check("NULL boat length renders as a dash", "—" in body)
 
         # 3. Booking works, prices the charter and hands off to checkout
@@ -526,6 +540,21 @@ def main():
             in_dropdown = re.findall(r'data-value="([^"]+)"', drop.group(0)) if drop else []
             check("the dropdown offers the same cities as the fallback",
                   in_dropdown == offered, f"{in_dropdown} vs {offered}")
+
+            # Availability lists the jacuzzi too. A window far enough out that
+            # nothing this suite books can hide either yacht.
+            quiet = END + timedelta(days=200)
+            body = c.get(f"/analytics?city=Dubrovnik&start_date={quiet}"
+                         f"&end_date={quiet + timedelta(days=2)}").get_data(as_text=True)
+            check("availability has a jacuzzi column", "<th>Jacuzzi</th>" in body,
+                  body[:300])
+            check("availability marks the yacht that has one",
+                  'has-extra">Yes' in body, body[:300])
+            check("availability marks the yacht that has not",
+                  'no-extra">No' in body, body[:300])
+            # A dash means "not a yacht", which is not the same as "no jacuzzi".
+            check("a boat that cannot have one is neither a yes nor a no",
+                  body.count('no-extra">No') == 1, body[:300])
 
             body = c.get("/analytics?city=Atlantis").get_data(as_text=True)
             check("an unknown harbour is called out, not reported as empty",

@@ -104,6 +104,7 @@
           <th>Type</th>
           <th>Guests</th>
           <th>Length</th>
+          <th>Jacuzzi</th>
           <th>Rate / day</th>
           <th>Harbour</th>
         </tr>
@@ -121,6 +122,13 @@
           </td>
           <td><span class="num">{{ boat.Seats }}</span></td>
           <td><span class="num">{{ "%.1f"|format(boat.Length) ~ " m" if boat.Length is not none else "—" }}</span></td>
+          {# Only a yacht has one, so a dash here means "not that kind of
+             boat", not "we didn't record it". #}
+          <td>
+            {% if not boat.yacht %}<span class="text-muted">—</span>
+            {% elif boat.yacht.HasJacuzzi %}<span class="has-extra">Yes</span>
+            {% else %}<span class="no-extra">No</span>{% endif %}
+          </td>
           <td><span class="num">{{ boat.DailyRate | money }}</span></td>
           <td>{{ office.City }}</td>
         </tr>
