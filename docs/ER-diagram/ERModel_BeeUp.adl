@@ -3904,6 +3904,84 @@ INSTANCE <Attribute (ER)-12844-12877-12891-12912-12957-13038-13098-13491> : <Att
 	VALUE "no"
 
 
+INSTANCE <Attribute (ER)-12844-12877-12891-12912-12957-13038-13098-13503> : <Attribute (ER)>
+
+	ATTRIBUTE <Position>
+	VALUE "NODE x:35.75cm y:20.25cm w:2.25cm h:.75cm index:252"
+
+	ATTRIBUTE <External tool coupling>
+	VALUE ""
+
+	ATTRIBUTE <Comment>
+	VALUE ""
+
+	ATTRIBUTE <Description>
+	VALUE ""
+
+	ATTRIBUTE <Open questions>
+	VALUE ""
+
+	ATTRIBUTE <fontcolor>
+	VALUE "EXPR val:\"black\""
+
+	ATTRIBUTE <URI>
+	VALUE ""
+
+	ATTRIBUTE <Additional Triples>
+	VALUE
+
+	ATTRIBUTE <vizGrayscaleMode>
+	VALUE "EXPR val:0"
+
+	ATTRIBUTE <General purpose attribute>
+	VALUE ""
+
+	ATTRIBUTE <objectid>
+	VALUE "EXPR val:13503"
+
+	ATTRIBUTE <Custom attributes>
+	VALUE
+
+	ATTRIBUTE <Sort custom attributes>
+	VALUE "Sort custom attributes (ascending)"
+
+	ATTRIBUTE <Color>
+	VALUE "lightblue"
+
+	ATTRIBUTE <Denomination>
+	VALUE "Has Jacuzzi"
+
+	ATTRIBUTE <Key attribute>
+	VALUE "no"
+
+	ATTRIBUTE <Data Type>
+	VALUE "Character Varying"
+
+	ATTRIBUTE <Attribute type>
+	VALUE "Single-value"
+
+	ATTRIBUTE <Length / Precision>
+	VALUE 32
+
+	ATTRIBUTE <Scale>
+	VALUE 0
+
+	ATTRIBUTE <Not NULL>
+	VALUE "no"
+
+	ATTRIBUTE <Unique>
+	VALUE "no"
+
+	ATTRIBUTE <__NameGeneration__>
+	VALUE "NAMEGEN srcattr:\"Denomination\""
+
+	ATTRIBUTE <Data Type (direct)>
+	VALUE ""
+
+	ATTRIBUTE <Auto increment>
+	VALUE "no"
+
+
 INSTANCE <makes> : <Relation (ER)>
 
 	ATTRIBUTE <Position>
@@ -8433,6 +8511,56 @@ ATTR \"General purpose attribute\" lines:20"
 	ATTRIBUTE <vizDirection>
 	VALUE "EXPR val:\"no\""
 
+
+
+RELATION <has Attribute (ER)>
+	FROM <Catamaran> : <Entity (ER)>
+	TO <Attribute (ER)-12844-12877-12891-12912-12957-13038-13098-13503> : <Attribute (ER)>
+
+	ATTRIBUTE <Positions>
+	VALUE "EDGE 0 index:253"
+
+	ATTRIBUTE <GraphRep>
+	VALUE "GRAPHREP
+
+#-- COLOR DEFINITIONS --
+AVAL as-original-type bnw:\"vizGrayscaleMode\"
+IF (bnw) {
+  SET linecol:(\"$808080\")
+} ELSE {
+  SET linecol:(\"steelblue\")
+}
+
+PEN color:(linecol)
+
+EDGE
+
+START
+AVAL set-default:\"yes\" showdir:\"vizDirection\"
+IF (showdir = \"yes\") {
+  FILL color:(linecol)
+  ELLIPSE x:0.0cm y:0.0cm rx:0.05cm ry:0.05cm
+}"
+
+	ATTRIBUTE <AttrRep>
+	VALUE "NOTEBOOK
+
+#------------------
+CHAPTER \"General purpose\"
+ATTR \"General purpose attribute\" lines:20"
+
+	ATTRIBUTE <vizGrayscaleMode>
+	VALUE "EXPR val:0"
+
+	ATTRIBUTE <General purpose attribute>
+	VALUE ""
+
+	ATTRIBUTE <HlpTxt>
+	VALUE "The relation 'has Attribute' is used to specify which attributes an entity or a relation has. The sma"
+	      "ll dot at the start of the relation shows the \"owner\" of the attribute."
+
+	ATTRIBUTE <vizDirection>
+	VALUE "EXPR val:\"no\""
 
 
 RELATION <has Attribute (ER)>
