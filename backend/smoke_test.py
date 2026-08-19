@@ -791,6 +791,9 @@ def main():
 
             body = c.get("/report").get_data(as_text=True)
             check("report offers a cancel button for a future rental", "/cancel" in body)
+            # A boat ID alone does not say where the charter is collected from.
+            check("the logbook names the harbour and its country",
+                  "Dubrovnik, HR" in flat(body), body[:300])
 
             body = c.post(f"/rentals/B4/{far_start.isoformat()}/cancel",
                           follow_redirects=True).get_data(as_text=True)

@@ -2,6 +2,7 @@ from flask import flash, redirect, request, render_template, session, url_for
 from datetime import datetime, date, timedelta
 from sqlalchemy import and_, func, select, or_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 from functools import wraps
 from uuid import uuid4
 
@@ -275,6 +276,11 @@ def report():
     rentals = (
         db.session.query(Rental)
         .filter(Rental.ClientID == session.get("client").get("ClientID"))
+        # The logbook shows each charter's harbour, which lives two hops away
+        # on Office. Eager-loaded so a long logbook is one query, not one per
+        # row -- and left as an outer join, so a rental still lists even if its
+        # boat or office has gone missing.
+        .options(joinedload(Rental.boat).joinedload(Boat.office))
         .order_by(Rental.RentalDate.desc())
         .all()
     )

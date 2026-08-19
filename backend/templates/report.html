@@ -14,6 +14,7 @@
       <thead>
         <tr>
           <th>Boat</th>
+          <th>Harbour</th>
           <th>From</th>
           <th>To</th>
           <th>Days</th>
@@ -26,6 +27,11 @@
         {% for rental in rentals %}
         <tr>
           <td><span class="num">{{ rental.BoatID }}</span></td>
+          {# A boat ID says nothing about where you are collecting it from. #}
+          <td>
+            {% set office = rental.boat.office if rental.boat else None %}
+            {{ office.City ~ ", " ~ office.Country if office else "—" }}
+          </td>
           <td><span class="num">{{ rental.RentalDate.strftime('%Y-%m-%d') }}</span></td>
           <td><span class="num">{{ rental.RentalEndDate.strftime('%Y-%m-%d') if rental.RentalEndDate else "—" }}</span></td>
           <td><span class="num">{{ rental.rental_days }}</span></td>
