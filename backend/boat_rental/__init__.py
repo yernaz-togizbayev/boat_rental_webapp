@@ -29,6 +29,16 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") or (
     f"{os.getenv('DB_NAME', 'boatdb')}"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Session cookie hardening. HttpOnly is Flask's default and is set here anyway
+# so it is visible rather than assumed; SameSite=Lax stops the cookie riding
+# along on a cross-site request, which is a second lock behind CSRFProtect.
+# Secure is off by default because the app is served over plain HTTP on
+# localhost and the cookie would simply never be sent -- set SESSION_COOKIE_
+# SECURE=1 behind TLS.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "") in ("1", "true", "True")
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_pre_ping": True,
     "pool_recycle": 280,
