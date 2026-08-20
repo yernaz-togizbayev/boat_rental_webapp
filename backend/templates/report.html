@@ -37,17 +37,27 @@
           <td><span class="num">{{ rental.rental_days }}</span></td>
           <td><span class="num">{{ rental.TotalAmount | money }}</span></td>
           <td>
-            <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
+            <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.is_cancelled %}bg-secondary{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
               {{ rental.PaymentStatus }}
             </span>
+            {# A cancelled charter is kept as the record of a payment, so say
+               that rather than leaving a bare badge to be read as unpaid. #}
+            {% if rental.is_cancelled %}
+            <small class="d-block text-muted">paid, then cancelled — refund via the office</small>
+            {% endif %}
             {# An unpaid booking is a hold, and holds run out. Say when. #}
-            {% if rental.PaymentStatus != 'PAID' and rental.RentalDate >= today %}
+            {% if rental.PaymentStatus != 'PAID' and not rental.is_cancelled and rental.RentalDate >= today %}
             <small class="d-block text-muted">
               pay by {{ rental.pay_by.strftime('%d %b, %H:%M') }}
             </small>
             {% endif %}
           </td>
           <td>
+            {# Nothing to pay and nothing to cancel on a cancelled charter --
+               it is a record now, not a booking. #}
+            {% if rental.is_cancelled %}
+            <span class="text-muted">Cancelled</span>
+            {% else %}
             {% if rental.PaymentStatus != 'PAID' %}
             <a class="btn btn-sm btn-success"
                href="{{ url_for('pay_rental', boat_id=rental.BoatID, rental_date=rental.RentalDate.strftime('%Y-%m-%d')) }}">Pay now</a>
@@ -61,6 +71,7 @@
             </form>
             {% else %}
             <span class="text-muted">Started</span>
+            {% endif %}
             {% endif %}
           </td>
         </tr>

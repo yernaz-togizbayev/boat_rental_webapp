@@ -40,10 +40,12 @@ from sqlalchemy.engine import Engine  # noqa: E402
 
 from boat_rental import app, db  # noqa: E402
 from boat_rental.forms import TEST_CARD_ACCEPTED, TEST_CARD_DECLINED  # noqa: E402
+from boat_rental.routes import get_available_boats  # noqa: E402
 from boat_rental.models import (  # noqa: E402
     AVAILABILITY_AVAILABLE,
     AVAILABILITY_MAINTENANCE,
     DEFAULT_START_TIME,
+    PAYMENT_CANCELLED,
     PAYMENT_PAID,
     PAYMENT_UNPAID,
     charter_total,
@@ -930,8 +932,75 @@ def main():
             body = c.post(f"/rentals/B4/{far_start.isoformat()}/cancel",
                           follow_redirects=True).get_data(as_text=True)
             check("a client can cancel a future rental", "cancelled" in body, body[:300])
-            check("the cancelled rental is gone",
+            check("an unpaid cancellation deletes the row",
                   Rental.query.filter_by(BoatID="B4", ClientID="C1").count() == 0)
+
+        # 14b. Cancelling a *paid* charter must not delete it. The row is the
+        #      only record the client was charged, so it is kept as CANCELLED
+        #      -- but it must stop holding the boat, and nothing may sweep it.
+        with app.test_client() as c:
+            as_client(c, "C1")
+            paid_start = END + timedelta(days=320)
+            paid_end = paid_start + timedelta(days=2)
+            search(c, "Dubrovnik", start=paid_start, end=paid_end)
+            book(c, "B4", start=paid_start, end=paid_end)
+            pay(c, "B4", rental_date=paid_start)
+            booked = Rental.query.filter_by(BoatID="B4", ClientID="C1",
+                                            RentalDate=paid_start).first()
+            check("the charter is paid before cancelling",
+                  booked.PaymentStatus == PAYMENT_PAID)
+            amount = booked.TotalAmount
+
+            body = c.post(f"/rentals/B4/{paid_start.isoformat()}/cancel",
+                          follow_redirects=True).get_data(as_text=True)
+            kept = Rental.query.filter_by(BoatID="B4", ClientID="C1",
+                                          RentalDate=paid_start).first()
+            check("a paid charter is kept, not deleted", kept is not None)
+            check("it is marked CANCELLED",
+                  kept is not None and kept.PaymentStatus == PAYMENT_CANCELLED,
+                  kept.PaymentStatus if kept else "row gone")
+            # The whole point: what was charged is still on the record.
+            check("the amount charged survives the cancellation",
+                  kept is not None and kept.TotalAmount == amount,
+                  f"{kept.TotalAmount if kept else '-'} vs {amount}")
+            check("the client is told the money is traceable",
+                  "refund" in body.lower(), body[:300])
+
+            # If a cancelled row still blocked its dates the boat would be
+            # unbookable for ever, which is worse than the bug being fixed.
+            body = search(c, "Dubrovnik", start=paid_start,
+                          end=paid_end).get_data(as_text=True)
+            check("a cancelled charter stops holding the boat",
+                  'value="B4"' in body, body[:300])
+
+            # NB: this row is far in the future, so the hold sweep never even
+            # considers it. The sweep is exercised against a cancelled charter
+            # inside its window further down, where it can actually bite.
+            check("the cancelled record is still there after a search",
+                  Rental.query.filter_by(BoatID="B4", ClientID="C1",
+                                         RentalDate=paid_start).count() == 1)
+
+            # The composite PK is (ClientID, BoatID, RentalDate), so rebooking
+            # the same boat on the same day would collide with the kept row.
+            body = book(c, "B4", start=paid_start, end=paid_end).get_data(as_text=True)
+            check("the same boat can be rebooked for the same date",
+                  BOOKED in body, body[:300])
+            again = Rental.query.filter_by(BoatID="B4", ClientID="C1",
+                                           RentalDate=paid_start).first()
+            check("rebooking reuses the row rather than duplicating it",
+                  Rental.query.filter_by(BoatID="B4", ClientID="C1",
+                                         RentalDate=paid_start).count() == 1)
+            check("the rebooking is a new unpaid hold, not the old paid one",
+                  again.PaymentStatus == PAYMENT_UNPAID)
+            check("the rebooking gets a fresh CreatedAt",
+                  again.CreatedAt > booked.CreatedAt or again.CreatedAt is not None)
+
+            # Tidy up so later counts are unaffected.
+            db.session.delete(again)
+            db.session.commit()
+
+        with app.test_client() as c:
+            as_client(c, "C1")
 
             # C2 booked B1 for END+10 back in section 6. C1 must not reach it,
             # which is the whole point of taking ClientID from the session.
@@ -1000,13 +1069,36 @@ def main():
             live_start = date.today() - timedelta(days=1)
             db.session.add(Rental(ClientID="C1", BoatID="B3", RentalDate=live_start,
                                   RentalEndDate=date.today() + timedelta(days=7),
-                                  PaymentStatus="PAID"))
+                                  PaymentStatus="PAID",
+                                  # Booked well in advance, so once cancelled its
+                                  # payment deadline is long past and the hold
+                                  # sweep would take it if nothing stopped it.
+                                  # Left at the default, CreatedAt would be now
+                                  # and the late-booking grace would keep it
+                                  # alive, testing nothing.
+                                  CreatedAt=datetime.now() - timedelta(days=10)))
             db.session.commit()
             body = c.post(f"/manager/rentals/C1/B3/{live_start.isoformat()}/delete",
                           follow_redirects=True).get_data(as_text=True)
+            # This one was PAID, so the row stays as the record of the charge;
+            # what must go is its hold on the boat, not the row.
+            live = Rental.query.filter_by(BoatID="B3", RentalDate=live_start).first()
             check("manager can cancel a charter already under way",
-                  Rental.query.filter_by(BoatID="B3", RentalDate=live_start).count() == 0,
-                  body[:300])
+                  live is not None and live.is_cancelled,
+                  f"{live.PaymentStatus if live else 'row deleted'} | {body[:200]}")
+            # get_available_boats() runs release_expired_holds() first, and
+            # this cancelled charter is squarely in the sweep's window: it
+            # started yesterday, so its payment deadline lapsed the day before
+            # that, and it is "not PAID". Nothing but the CANCELLED exclusion
+            # stops the sweep deleting the record this status exists to keep.
+            free = [b.BoatID for b, _ in get_available_boats(
+                "Mykonos", live_start, live_start + timedelta(days=2))]
+            check("cancelling under way frees the boat for those dates",
+                  "B3" in free, f"available: {free}")
+            swept = Rental.query.filter_by(BoatID="B3", RentalDate=live_start).first()
+            check("the hold sweep does not delete a cancelled charter",
+                  swept is not None and swept.is_cancelled,
+                  "row deleted by the sweep" if swept is None else swept.PaymentStatus)
 
             # A finished charter is the record that it happened.
             done_start = date.today() - timedelta(days=20)

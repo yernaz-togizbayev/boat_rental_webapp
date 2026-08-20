@@ -14,6 +14,11 @@ AVAILABILITY_MAINTENANCE = "Maintenance"
 # the app moves a rental from UNPAID to PAID and never back.
 PAYMENT_PAID = "PAID"
 PAYMENT_UNPAID = "UNPAID"
+# A charter that was paid for and then called off. The row is kept because it
+# is the only record that the client was charged -- the same reason
+# TotalAmount is frozen at booking rather than recomputed from DailyRate. It
+# no longer holds the boat: rental_overlap_filter() ignores this status.
+PAYMENT_CANCELLED = "CANCELLED"
 
 CENTS = Decimal("0.01")
 
@@ -169,6 +174,11 @@ class Rental(db.Model):
     def is_late_booking(self):
         """Booked inside the 24-hour window, so held only briefly."""
         return booked_late(self.RentalDate, self.StartTime, self.CreatedAt)
+
+    @property
+    def is_cancelled(self):
+        """A called-off charter, kept only as the record of a payment."""
+        return self.PaymentStatus == PAYMENT_CANCELLED
 
     def hold_lapsed(self, now=None):
         return (now or datetime.now()) > self.pay_by

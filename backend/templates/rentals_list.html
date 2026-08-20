@@ -61,12 +61,16 @@
           </td>
           <td><span class="num">{{ rental.TotalAmount | money }}</span></td>
           <td>
-            <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
+            <span class="badge {% if rental.PaymentStatus == 'PAID' %}bg-success{% elif rental.is_cancelled %}bg-secondary{% elif rental.PaymentStatus == 'UNPAID' %}bg-danger{% else %}bg-warning{% endif %}">
               {{ rental.PaymentStatus }}
             </span>
           </td>
           <td>
-            {% if finished %}
+            {# A cancelled charter is already off the water; it is kept only as
+               the record that the client paid, so there is nothing to cancel. #}
+            {% if rental.is_cancelled %}
+            <span class="text-muted">Refund due</span>
+            {% elif finished %}
             <span class="text-muted">On record</span>
             {% else %}
             <form method="post" style="display:inline"

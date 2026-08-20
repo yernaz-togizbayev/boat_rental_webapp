@@ -20,6 +20,7 @@ from boat_rental.generator import generate_data, stock_office
 from boat_rental.models import (
     AVAILABILITY_AVAILABLE,
     DEFAULT_START_TIME,
+    PAYMENT_CANCELLED,
     PAYMENT_PAID,
     PAYMENT_UNPAID,
     charter_total,
@@ -328,9 +329,17 @@ def cancel_rental(boat_id, rental_date):
         return redirect(url_for("report"))
 
     try:
-        db.session.delete(rental)
+        kept = release_rental(rental)
         db.session.commit()
-        flash(f"Rental of boat {boat_id} cancelled.", "success")
+        if kept:
+            flash(
+                f"Rental of boat {boat_id} cancelled. It stays on your logbook as "
+                "CANCELLED because it was paid for — the office will arrange the "
+                "refund.",
+                "success",
+            )
+        else:
+            flash(f"Rental of boat {boat_id} cancelled.", "success")
     except Exception:
         db.session.rollback()
         app.logger.exception("Failed to cancel rental %s/%s", boat_id, rental_date)
@@ -528,22 +537,36 @@ def attempt_booking(params):
     days = (params["end_date"] - params["start_date"]).days
     total = charter_total(boat.DailyRate if boat else None, days)
 
+    client_id = session["client"]["ClientID"]
+
+    # A cancelled charter keeps its row, and the primary key is
+    # (ClientID, BoatID, RentalDate) -- so this same client rebooking this same
+    # boat for this same start date collides with it. Reuse the row instead of
+    # refusing the booking: every field is rewritten, CreatedAt included, so
+    # what comes out is the new booking and not a revived old one. Only a
+    # CANCELLED row may be taken over; a live one still means "already booked".
+    previous = Rental.query.filter_by(
+        ClientID=client_id, BoatID=boat_id, RentalDate=params["start_date"]
+    ).first()
+    if previous is not None and not previous.is_cancelled:
+        flash("You have already booked this boat for that start date.", "error")
+        return False
+
     try:
-        db.session.add(
-            Rental(
-                ClientID=session["client"]["ClientID"],
-                BoatID=boat_id,
-                RentalDate=params["start_date"],
-                RentalEndDate=params["end_date"],
-                PaymentStatus=PAYMENT_UNPAID,
-                TotalAmount=total,
-                StartTime=DEFAULT_START_TIME,
-                # Set explicitly rather than left to the column default: the
-                # payment deadline is measured from it, so it is part of the
-                # booking, not bookkeeping.
-                CreatedAt=datetime.now(),
-            )
+        rental = previous or Rental(
+            ClientID=client_id, BoatID=boat_id, RentalDate=params["start_date"]
         )
+        rental.RentalEndDate = params["end_date"]
+        rental.PaymentStatus = PAYMENT_UNPAID
+        rental.TotalAmount = total
+        rental.StartTime = DEFAULT_START_TIME
+        # Set explicitly rather than left to the column default: the payment
+        # deadline is measured from it, so it is part of the booking, not
+        # bookkeeping -- and on a reused row there is no default to fall back
+        # on, only the old booking's timestamp.
+        rental.CreatedAt = datetime.now()
+        if previous is None:
+            db.session.add(rental)
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -613,7 +636,37 @@ def rental_overlap_filter(start_date, end_date):
     return and_(
         Rental.RentalDate < end_date,
         or_(Rental.RentalEndDate.is_(None), Rental.RentalEndDate > start_date),
+        # A cancelled charter keeps its row as the record of a payment, but it
+        # holds nothing -- without this the boat would be unbookable forever.
+        # Spelled with an explicit NULL branch because PaymentStatus is
+        # nullable and `<> 'CANCELLED'` is NULL, not true, for a NULL status:
+        # every rental with no status would silently stop blocking its boat.
+        or_(Rental.PaymentStatus.is_(None),
+            Rental.PaymentStatus != PAYMENT_CANCELLED),
     )
+
+
+def release_rental(rental):
+    """Call off a booking, keeping the row only if money changed hands.
+
+    An UNPAID booking is a hold: nothing was taken, so the row goes and the
+    boat is simply free again. A PAID one is the only record that the client
+    was charged, and deleting it would erase that -- the same reason
+    TotalAmount is frozen at booking rather than recomputed from DailyRate.
+    It is marked CANCELLED instead, and stops holding the boat because
+    rental_overlap_filter() ignores that status.
+
+    Shared by both cancellation paths on purpose. The two differ over *what
+    may be cancelled* -- that is the feature -- but what cancelling *does* to
+    a paid charter must not depend on who clicked. Does not commit.
+
+    Returns True if the row was kept as a record.
+    """
+    if rental.PaymentStatus == PAYMENT_PAID:
+        rental.PaymentStatus = PAYMENT_CANCELLED
+        return True
+    db.session.delete(rental)
+    return False
 
 
 def rentals_in_city(city, start_date, end_date):
@@ -666,6 +719,11 @@ def release_expired_holds():
     # The window reaches a day back because a hold for tomorrow can lapse today.
     candidates = Rental.query.filter(
         Rental.PaymentStatus != PAYMENT_PAID,
+        # A cancelled charter is not an unpaid hold, it is a receipt. It also
+        # satisfies "not PAID", so without this the sweep would delete the one
+        # row this whole status exists to preserve.
+        or_(Rental.PaymentStatus.is_(None),
+            Rental.PaymentStatus != PAYMENT_CANCELLED),
         Rental.RentalDate <= today + timedelta(days=1),
         or_(Rental.RentalEndDate.is_(None), Rental.RentalEndDate > today),
     ).all()
@@ -1424,9 +1482,14 @@ def cancel_rental_as_manager(client_id, boat_id, rental_date):
         return redirect(url_for("list_rentals"))
 
     try:
-        db.session.delete(rental)
+        kept = release_rental(rental)
         db.session.commit()
-        flash(f"Cancelled {boat_id} for {client_id} on {start:%d %b %Y}.", "success")
+        flash(
+            f"Cancelled {boat_id} for {client_id} on {start:%d %b %Y}."
+            + (" It was paid for, so it stays on record as CANCELLED for the refund."
+               if kept else ""),
+            "success",
+        )
     except Exception:
         db.session.rollback()
         app.logger.exception("Failed to cancel rental %s/%s/%s", client_id, boat_id, rental_date)
