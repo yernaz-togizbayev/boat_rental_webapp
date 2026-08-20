@@ -857,7 +857,12 @@ input[type="date"].form-control { font-family: var(--mono); font-size: var(--ste
   opacity: 0;
   transition: opacity 1.4s ease-in-out;
 }
-.chart-hero .hero-photo.is-showing { opacity: .5; }
+/* The photo carries the band, so it is shown at most of its strength. Half was
+   too dark to read the coastline. What stops it going further is the headline
+   over it: measured against six of the hero images, white text on the darkest
+   scrim holds a 5.0 contrast ratio here and falls under the 4.5 AA floor by
+   about .85. */
+.chart-hero .hero-photo.is-showing { opacity: .8; }
 
 .chart-hero .hero-place {
   position: absolute;
@@ -868,7 +873,11 @@ input[type="date"].form-control { font-family: var(--mono); font-size: var(--ste
   font-size: var(--step--2);
   text-transform: uppercase;
   letter-spacing: .14em;
-  color: #9fbecb;
+  /* Sits over the least-scrimmed corner, so it is the first thing a bright
+     photo washes out -- it measured 2.9 even before the photo was lifted. The
+     paler ink and the shadow together put it back above the 3.0 floor. */
+  color: #e2eff4;
+  text-shadow: 0 1px 3px rgba(10, 35, 51, .85);
 }
 .chart-hero .hero-place:not(:empty)::before {
   content: "";
@@ -883,7 +892,10 @@ input[type="date"].form-control { font-family: var(--mono); font-size: var(--ste
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(100deg, rgba(10, 35, 51, .95) 12%, rgba(10, 35, 51, .55) 62%, rgba(10, 35, 51, .3) 100%);
+  /* Heavy where the headline sits, light where the photo should show. The far
+     end is .42 rather than .3 because the place label sits in that corner and
+     the brighter photo was leaving it barely legible. */
+  background: linear-gradient(100deg, rgba(10, 35, 51, .95) 12%, rgba(10, 35, 51, .55) 62%, rgba(10, 35, 51, .42) 100%);
 }
 .chart-hero .isobaths {
   position: absolute;
