@@ -200,6 +200,10 @@ These are deliberate decisions, not loose ends:
   job, because a search is the moment the answer has to be honest.
 - **No migrations.** `models.py` is a hand-maintained mirror of `Group05_Createtable.sql`; a column
   added to one must be added to the other.
+- **Both published ports listen on `127.0.0.1` only**, so the app and the database are reachable
+  from the machine running them and nowhere else. This is a development server with the reloader
+  on, and the database has a known root password; neither belongs on a shared network. To reach it
+  from another device, publish `5000:5000` for that session.
 - **Cancelling a paid charter keeps the row** as `CANCELLED` rather than deleting it, so the record
   that money changed hands survives.
 

@@ -11,7 +11,11 @@ services:
       # written by SQL mean the same thing.
       TZ: "${TZ:-Europe/Vienna}"
     ports:
-      - "3306:3306"
+      # Loopback only. Published as "3306:3306" this is a database with a known
+      # root password answering to the whole local network. The backend does not
+      # use this mapping at all -- it reaches the db over the compose network by
+      # hostname -- so it exists purely for a SQL client on this machine.
+      - "127.0.0.1:3306:3306"
     volumes:
       - ./database:/docker-entrypoint-initdb.d/
     healthcheck:
@@ -28,7 +32,13 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "5000:5000"
+      # Loopback only, so the app is reachable from this machine and nowhere
+      # else. It runs with the reloader on, and a development server on
+      # 0.0.0.0 puts a Python traceback -- and, with the debugger enabled, a
+      # console -- in front of anyone sharing the network. To demo from a phone
+      # or another laptop, change this to "5000:5000" for that session and put
+      # it back afterwards.
+      - "127.0.0.1:5000:5000"
     environment:
       DB_HOST: db
       DB_PORT: 3306
