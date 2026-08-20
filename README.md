@@ -142,7 +142,6 @@ It does **not** cover the SQL seed scripts; those need MariaDB.
 | `database/` | Graded SQL: shared `CREATE TABLE`s plus per-student insert and query scripts |
 | `docs/` | Graded deliverables: ER diagram, NoSQL designs, SQL screenshots |
 | `Group05_MS1.pdf` | Milestone 1 report |
-| `CLAUDE.md` | Architecture notes and the invariants that are easy to break |
 
 ```text
 boat_rental_webapp/
