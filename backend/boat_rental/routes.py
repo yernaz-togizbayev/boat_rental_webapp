@@ -9,7 +9,7 @@ from uuid import uuid4
 from boat_rental.forms import BoatSelectionForm, BookingSearchForm, ManagerLoginForm, EmployeeHireForm, EmployeeEditForm, ConfirmDeleteForm, OfficeForm, BoatForm, ClientRegistrationForm, SupervisesForm, MaintainsForm, PaymentForm
 from boat_rental.forms import (TEST_CARD_ACCEPTED, TEST_CARD_DECLINED, card_digits,
                                grouped_card)
-from boat_rental import app, db
+from boat_rental import app, db, format_money
 from boat_rental import assignments, images
 from boat_rental.assignments import (
     detach_boat_links,
@@ -664,6 +664,9 @@ def release_rental(rental):
     """
     if rental.PaymentStatus == PAYMENT_PAID:
         rental.PaymentStatus = PAYMENT_CANCELLED
+        # Stamped here rather than inferred later: this is the moment the
+        # refund became owed, and nothing else in the row records it.
+        rental.CancelledAt = datetime.now()
         return True
     db.session.delete(rental)
     return False
@@ -1494,6 +1497,63 @@ def cancel_rental_as_manager(client_id, boat_id, rental_date):
         db.session.rollback()
         app.logger.exception("Failed to cancel rental %s/%s/%s", client_id, boat_id, rental_date)
         flash("Cancellation failed.", "error")
+
+    return redirect(url_for("list_rentals", city=request.form.get("city") or None))
+
+
+@app.route("/manager/rentals/<client_id>/<boat_id>/<rental_date>/refund", methods=["POST"])
+@manager_required
+def refund_rental(client_id, boat_id, rental_date):
+    """Record that the refund for a cancelled charter has been paid back.
+
+    Manager-only, and takes all three key components, because it acts on
+    someone else's booking -- the same shape as cancel_rental_as_manager().
+    There is no client-side counterpart on purpose: a client marking their
+    own refund issued would be recording the office's side of the ledger.
+
+    It only ever stamps RefundedAt. The money moves outside this app, so this
+    is a record of that having happened, not the act of doing it.
+    """
+    form = ConfirmDeleteForm()
+    if not form.validate_on_submit():
+        flash("Invalid refund request.", "error")
+        return redirect(url_for("list_rentals"))
+
+    try:
+        start = datetime.strptime(rental_date, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Invalid rental date.", "error")
+        return redirect(url_for("list_rentals"))
+
+    rental = Rental.query.filter_by(
+        ClientID=client_id, BoatID=boat_id, RentalDate=start
+    ).first()
+
+    if rental is None:
+        flash("That rental no longer exists.", "warning")
+        return redirect(url_for("list_rentals"))
+
+    # Guarded both ways: nothing is owed on a charter that was not cancelled,
+    # and marking one refunded twice would hide that it was paid back once.
+    if not rental.is_cancelled:
+        flash(f"{boat_id} was not cancelled, so there is nothing to refund.", "error")
+        return redirect(url_for("list_rentals"))
+
+    if rental.RefundedAt is not None:
+        flash(f"That refund was already recorded on {rental.RefundedAt:%d %b %Y}.",
+              "warning")
+        return redirect(url_for("list_rentals"))
+
+    try:
+        rental.RefundedAt = datetime.now()
+        db.session.commit()
+        flash(f"Refund of {format_money(rental.TotalAmount)} recorded for {client_id}.",
+              "success")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to record refund %s/%s/%s",
+                             client_id, boat_id, rental_date)
+        flash("Could not record the refund.", "error")
 
     return redirect(url_for("list_rentals", city=request.form.get("city") or None))
 

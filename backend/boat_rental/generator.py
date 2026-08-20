@@ -14,6 +14,9 @@ from boat_rental.models import (
     AVAILABILITY_MAINTENANCE,
     CENTS,
     DEFAULT_START_TIME,
+    PAYMENT_CANCELLED,
+    PAYMENT_PAID,
+    PAYMENT_UNPAID,
     charter_total,
     Office,
     Client,
@@ -262,6 +265,7 @@ def do_rentals():
         return
 
 
+    now = datetime.now()
     booked_windows = defaultdict(list)
     for _ in range(400):
         client_id = random.choice(clients).ClientID
@@ -274,7 +278,28 @@ def do_rentals():
             continue
         booked_windows[boat.BoatID].append((rental_date, end_date))
 
-        status = random.choices(["PAID", "UNPAID", "PENDING"], weights=[80, 12, 8])[0]
+        status = random.choices(
+            [PAYMENT_PAID, PAYMENT_UNPAID, "PENDING", PAYMENT_CANCELLED],
+            weights=[72, 12, 8, 8],
+        )[0]
+        created_at = (datetime.combine(rental_date, DEFAULT_START_TIME)
+                      - timedelta(days=random.randint(2, 40)))
+
+        # A cancelled charter carries the refund trail, and the two stamps have
+        # to be ordered: booked, then called off, then paid back -- and none of
+        # it in the future. A booking for a month away can have been made
+        # tomorrow, so for these the creation date is pulled back into the past
+        # first, or the cancellation would predate the booking.
+        cancelled_at = refunded_at = None
+        if status == PAYMENT_CANCELLED:
+            created_at = min(created_at, now - timedelta(days=2))
+            cancelled_at = min(created_at + timedelta(hours=random.randint(6, 240)), now)
+            # Not every refund has been dealt with yet: an outstanding one is
+            # the state the manager page exists to act on.
+            if random.random() < 0.6:
+                refunded_at = min(cancelled_at + timedelta(hours=random.randint(12, 168)),
+                                  now)
+
         db.session.add(
             Rental(
                 ClientID=client_id,
@@ -284,8 +309,9 @@ def do_rentals():
                 PaymentStatus=status,
                 TotalAmount=charter_total(boat.DailyRate, (end_date - rental_date).days),
                 StartTime=DEFAULT_START_TIME,
-                CreatedAt=datetime.combine(rental_date, DEFAULT_START_TIME)
-                - timedelta(days=random.randint(2, 40)),
+                CreatedAt=created_at,
+                CancelledAt=cancelled_at,
+                RefundedAt=refunded_at,
             )
         )
 

@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS Rental (
     -- When the booking was made. An unpaid booking is only a hold, and the
     -- deadline for paying it is measured against both the ride and this.
     CreatedAt DATETIME,
+    -- A charter that was paid for and then called off keeps its row, because
+    -- it is the only record the client was charged. These two say when the
+    -- money became owed back and when it was actually returned; both NULL on
+    -- a charter that was never cancelled.
+    CancelledAt DATETIME,
+    RefundedAt DATETIME,
     CONSTRAINT PK_rental PRIMARY KEY (ClientID, BoatID, RentalDate),
     CONSTRAINT FK_rental_clientID FOREIGN KEY (ClientID) REFERENCES Client(ClientID),
     CONSTRAINT FK_rental_boatID FOREIGN KEY (BoatID) REFERENCES Boat(BoatID)

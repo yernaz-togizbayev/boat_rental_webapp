@@ -67,9 +67,18 @@
           </td>
           <td>
             {# A cancelled charter is already off the water; it is kept only as
-               the record that the client paid, so there is nothing to cancel. #}
-            {% if rental.is_cancelled %}
-            <span class="text-muted">Refund due</span>
+               the record that the client paid. The one action left on it is
+               recording that the money went back. #}
+            {% if rental.is_cancelled and rental.RefundedAt %}
+            <span class="text-muted">Refunded {{ rental.RefundedAt.strftime('%d %b %Y') }}</span>
+            {% elif rental.is_cancelled %}
+            <form method="post" style="display:inline"
+                  action="{{ url_for('refund_rental', client_id=rental.ClientID, boat_id=rental.BoatID, rental_date=rental.RentalDate.strftime('%Y-%m-%d')) }}"
+                  onsubmit="return confirm('Record that {{ rental.TotalAmount | money }} has been refunded to {{ client.FirstName }} {{ client.LastName }}?')">
+              {{ delete_form.hidden_tag() }}
+              <input type="hidden" name="city" value="{{ current_filter }}">
+              <button class="btn btn-sm btn-outline-success">Mark refunded</button>
+            </form>
             {% elif finished %}
             <span class="text-muted">On record</span>
             {% else %}

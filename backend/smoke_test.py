@@ -965,6 +965,12 @@ def main():
                   f"{kept.TotalAmount if kept else '-'} vs {amount}")
             check("the client is told the money is traceable",
                   "refund" in body.lower(), body[:300])
+            # The refund trail: owed from the moment it was cancelled, and not
+            # yet settled.
+            check("cancelling stamps when the refund became owed",
+                  kept is not None and kept.CancelledAt is not None)
+            check("the refund starts out unpaid", kept.RefundedAt is None)
+            check("the charter reports a refund due", kept.refund_due is True)
 
             # If a cancelled row still blocked its dates the boat would be
             # unbookable for ever, which is worse than the bug being fixed.
@@ -1070,6 +1076,9 @@ def main():
             db.session.add(Rental(ClientID="C1", BoatID="B3", RentalDate=live_start,
                                   RentalEndDate=date.today() + timedelta(days=7),
                                   PaymentStatus="PAID",
+                                  # A paid charter has an amount; the refund
+                                  # checks below need something to preserve.
+                                  TotalAmount=charter_total(Decimal("770.00"), 8),
                                   # Booked well in advance, so once cancelled its
                                   # payment deadline is long past and the hold
                                   # sweep would take it if nothing stopped it.
@@ -1099,6 +1108,48 @@ def main():
             check("the hold sweep does not delete a cancelled charter",
                   swept is not None and swept.is_cancelled,
                   "row deleted by the sweep" if swept is None else swept.PaymentStatus)
+
+            # 14c. The refund is recorded by the office, not the client.
+            check("a cancelled charter starts with a refund outstanding",
+                  swept.refund_due is True)
+            listing = c.get("/manager/rentals").get_data(as_text=True)
+            check("the manager list offers to record the refund",
+                  "Mark refunded" in listing, listing[:300])
+            body = c.post(f"/manager/rentals/C1/B3/{live_start.isoformat()}/refund",
+                          follow_redirects=True).get_data(as_text=True)
+            refunded = Rental.query.filter_by(BoatID="B3", RentalDate=live_start).first()
+            check("a manager can record the refund",
+                  refunded.RefundedAt is not None, body[:300])
+            check("recording a refund does not delete the record",
+                  refunded is not None and refunded.is_cancelled)
+            check("the refund is no longer outstanding", refunded.refund_due is False)
+            # Recording the refund must not touch what was charged -- that
+            # figure is the whole reason the row was kept.
+            check("the amount charged is untouched by the refund",
+                  refunded.TotalAmount == charter_total(Decimal("770.00"), 8),
+                  f"{refunded.TotalAmount}")
+            check("the refund cannot be paid out twice",
+                  "already recorded" in c.post(
+                      f"/manager/rentals/C1/B3/{live_start.isoformat()}/refund",
+                      follow_redirects=True).get_data(as_text=True))
+            stamp = refunded.RefundedAt
+            check("the second attempt did not move the timestamp",
+                  Rental.query.filter_by(BoatID="B3",
+                                         RentalDate=live_start).first().RefundedAt == stamp)
+
+            # Nothing is owed on a charter nobody cancelled.
+            live2 = END + timedelta(days=400)
+            db.session.add(Rental(ClientID="C2", BoatID="B3", RentalDate=live2,
+                                  RentalEndDate=live2 + timedelta(days=2),
+                                  PaymentStatus=PAYMENT_PAID))
+            db.session.commit()
+            body = c.post(f"/manager/rentals/C2/B3/{live2.isoformat()}/refund",
+                          follow_redirects=True).get_data(as_text=True)
+            check("an uncancelled charter cannot be refunded",
+                  "nothing to refund" in body, body[:300])
+            check("it was not stamped anyway",
+                  Rental.query.filter_by(ClientID="C2", BoatID="B3",
+                                         RentalDate=live2).first().RefundedAt is None)
 
             # A finished charter is the record that it happened.
             done_start = date.today() - timedelta(days=20)

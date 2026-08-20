@@ -152,6 +152,10 @@ class Rental(db.Model):
     TotalAmount = db.Column(db.Numeric(10, 2))
     StartTime = db.Column(db.Time, default=DEFAULT_START_TIME)
     CreatedAt = db.Column(db.DateTime, default=datetime.now)
+    # Set only on a paid charter that was called off: when the refund became
+    # owed, and when it was handed back. Both NULL otherwise.
+    CancelledAt = db.Column(db.DateTime)
+    RefundedAt = db.Column(db.DateTime)
 
     __table_args__ = (db.PrimaryKeyConstraint("ClientID", "BoatID", "RentalDate"),)
 
@@ -179,6 +183,15 @@ class Rental(db.Model):
     def is_cancelled(self):
         """A called-off charter, kept only as the record of a payment."""
         return self.PaymentStatus == PAYMENT_CANCELLED
+
+    @property
+    def refund_due(self):
+        """Money was taken, the charter was called off, and it is still owed.
+
+        Only a cancellation that kept its row can owe anything: an unpaid
+        booking is deleted outright, because nothing was ever taken.
+        """
+        return self.is_cancelled and self.RefundedAt is None
 
     def hold_lapsed(self, now=None):
         return (now or datetime.now()) > self.pay_by

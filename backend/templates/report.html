@@ -42,8 +42,15 @@
             </span>
             {# A cancelled charter is kept as the record of a payment, so say
                that rather than leaving a bare badge to be read as unpaid. #}
-            {% if rental.is_cancelled %}
-            <small class="d-block text-muted">paid, then cancelled — refund via the office</small>
+            {% if rental.refund_due %}
+            <small class="d-block text-muted">
+              cancelled {{ rental.CancelledAt.strftime('%d %b') if rental.CancelledAt }} —
+              refund of {{ rental.TotalAmount | money }} due
+            </small>
+            {% elif rental.is_cancelled %}
+            <small class="d-block text-muted">
+              refunded {{ rental.RefundedAt.strftime('%d %b %Y') }}
+            </small>
             {% endif %}
             {# An unpaid booking is a hold, and holds run out. Say when. #}
             {% if rental.PaymentStatus != 'PAID' and not rental.is_cancelled and rental.RentalDate >= today %}
