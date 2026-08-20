@@ -22,6 +22,69 @@ def _unsplash(photo_id, width):
     return f"https://images.unsplash.com/photo-{photo_id}?w={width}&q=75&auto=format"
 
 
+# Unsplash asks that a displayed photo credit its photographer with a link back
+# to their profile, and that the link carries these parameters so the referral
+# is attributed. Their guidelines also say the download endpoint is only for a
+# user *taking* a photo -- setting a wallpaper, dropping it into a document --
+# and that hotlinking one for display is not that, so nothing here calls it.
+UNSPLASH_UTM = "utm_source=imse_boat_rental&utm_medium=referral"
+UNSPLASH_HOME = f"https://unsplash.com/?{UNSPLASH_UTM}"
+
+_PHOTO_ID = re.compile(r"photo-([^?/]+)")
+
+# Photographers, keyed by the id in the CDN URL above.
+#
+# How these were recovered matters if more are ever added: the API has no
+# endpoint mapping a CDN filename to its photo -- /photos/<id> wants the short
+# id and 404s on this one -- so each was found by searching for its subject and
+# matching the filename against `urls.raw` in the results. That only works
+# while a photo ranks for some query, so the ones no search surfaced are absent
+# here rather than guessed at, and the credits page says so. A photo fetched
+# through the API at runtime registers itself, so live lookups are never
+# uncredited.
+PHOTO_CREDITS = {
+    "1567899378494-47b22a2ae96a": ("Marcin Ciszewski", "collega"),
+    "1581272281570-61907217b302": ("Miquel Gelabert", "miquelgd"),
+    "1584212893031-410e387fbaf1": ("Rusty Watson", "rustyct1"),
+    "1601581875309-fafbf2d3ed3a": ("Johnny Africa", "johnnyafrica"),
+    "1529551739587-e242c564f727": ("Benjamín Gremler", "benjagremler"),
+    "1580502304784-8985b7eb7260": ("James Ting", "jamesting"),
+    "1414862625453-d87604a607e4": ("Ivan Ivankovic", "fjaka"),
+    "1459679749680-18eb1eb37418": ("Javier M.", "jmelpri"),
+    "1517670660212-61ed0b4fe8f9": ("Oscar Nord", "oscnord"),
+    "1674333362725-84e9996aa6fb": ("Sofia Vila Flor", "sofiavilaflor"),
+    "1758136692793-65ac5a91e06e": ("Zachary Moneypenny", "canon_guy84"),
+    "1517696522815-46a004b80a2d": ("Val Vesa", "adspedia"),
+    "1528580279421-f0b84f9d7640": ("Vidar Nordli-Mathisen", "vidarnm"),
+}
+
+
+def _profile(username):
+    return f"https://unsplash.com/@{username}?{UNSPLASH_UTM}"
+
+
+def credit_for(url):
+    """{name, profile} for a photo whose photographer we know, else None."""
+    match = _PHOTO_ID.search(url or "")
+    who = PHOTO_CREDITS.get(match.group(1)) if match else None
+    return {"name": who[0], "profile": _profile(who[1])} if who else None
+
+
+def _remember_credit(photo):
+    """Record the photographer of a photo the API just handed us."""
+    user = photo.get("user") or {}
+    match = _PHOTO_ID.search((photo.get("urls") or {}).get("raw", ""))
+    if match and user.get("name") and user.get("username"):
+        PHOTO_CREDITS[match.group(1)] = (user["name"], user["username"])
+
+
+def photo_credits():
+    """Every photographer we can name, once each, alphabetically."""
+    unique = {name: username for name, username in PHOTO_CREDITS.values()}
+    return [{"name": name, "profile": _profile(username)}
+            for name, username in sorted(unique.items())]
+
+
 BOAT_TYPE_IMAGES = {
     # Marcin Ciszewski -- superyacht at anchor off a wooded shore
     "yacht": _unsplash("1567899378494-47b22a2ae96a", 780),
@@ -123,6 +186,9 @@ def _search_unsplash(city, width):
 
     if not results:
         return None
+    # Credit it before returning: this is the one path where the photographer
+    # is known for certain, and it is lost as soon as the response is dropped.
+    _remember_credit(results[0])
     # urls.raw carries its own query string, so our sizing params get appended.
     return f"{results[0]['urls']['raw']}&w={width}&q=75&auto=format&fit=crop"
 

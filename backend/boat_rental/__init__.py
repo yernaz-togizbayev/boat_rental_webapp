@@ -40,6 +40,18 @@ def inject_csrf():
     return dict(csrf_token=generate_csrf)
 
 
+@app.context_processor
+def inject_unsplash():
+    """The attribution link the footer needs, so every page carries it.
+
+    Imported inside the function rather than at the top: images.py is a
+    sibling of this module, and importing it up there closes the same
+    circular loop that keeps `routes` at the bottom of the file.
+    """
+    from boat_rental.images import UNSPLASH_HOME
+    return dict(unsplash_home=UNSPLASH_HOME)
+
+
 @app.template_filter("money")
 def format_money(amount):
     """Euro with thousands separators, or an em dash when there is no price.

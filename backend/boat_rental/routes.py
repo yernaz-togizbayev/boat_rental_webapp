@@ -485,6 +485,16 @@ def analytics():
     )
 
 
+@app.route("/credits")
+def credits():
+    """Photographer attribution for the Unsplash photos on the site.
+
+    Not behind a login: the credit has to be reachable from the footer of
+    every page, including the ones an anonymous visitor sees.
+    """
+    return render_template("credits.html", credits=images.photo_credits())
+
+
 @app.route("/generate-data", methods=["POST"])
 def reset_data():
     """Refill the demo data. Offered to anonymous visitors, and repeatable.

@@ -156,6 +156,34 @@ a:hover { color: var(--magenta); text-decoration-color: currentColor; }
   padding: 1.75rem 1.25rem 4rem;
 }
 
+/* Attribution band. Quiet by design -- it has to be present on every page, so
+   it must not compete with the page it sits under. */
+.site-footer {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.25rem;
+  border-top: 1px solid var(--hairline);
+}
+.site-footer p {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  letter-spacing: .04em;
+  color: var(--sound);
+}
+.site-footer a { color: var(--sound); text-decoration: underline; }
+.site-footer a:hover { color: var(--ink); }
+
+.credit-list {
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem 1.5rem;
+}
+.credit-list a { color: var(--ink); }
+
 /* Page header band: eyebrow reads as a chart legend caption. */
 .page-head { margin-bottom: 1.5rem; }
 .page-head .eyebrow {

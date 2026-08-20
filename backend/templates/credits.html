@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="page-head">
+  <p class="eyebrow">Credits</p>
+  <h1>Photography</h1>
+  <p>Every photograph on this site comes from
+    <a href="{{ unsplash_home }}" rel="noopener">Unsplash</a> and is used under the
+    Unsplash License. The photographers, with our thanks:</p>
+</div>
+
+<div class="content-section rise">
+  {% if credits %}
+  <ul class="credit-list">
+    {% for person in credits %}
+    <li><a href="{{ person.profile }}" rel="noopener">{{ person.name }}</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {# Said plainly rather than left as a silent gap. Unsplash asks that a photo
+     credit its photographer, and for these we genuinely cannot name them: the
+     API offers no way back from a CDN filename to the photo it belongs to. #}
+  <p class="text-muted mb-0">
+    A number of the harbour and hero photographs are not listed above. They are
+    Unsplash photographs too, but they were saved as image links without the
+    photographer's name recorded, and there is no way to look that up from the
+    link alone. Any photograph the app fetches live from Unsplash is always
+    credited here.
+  </p>
+</div>
+{% endblock %}

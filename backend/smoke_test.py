@@ -41,6 +41,7 @@ from sqlalchemy.engine import Engine  # noqa: E402
 from boat_rental import app, db  # noqa: E402
 from boat_rental.forms import TEST_CARD_ACCEPTED, TEST_CARD_DECLINED  # noqa: E402
 from boat_rental.routes import get_available_boats  # noqa: E402
+from boat_rental import images  # noqa: E402
 from boat_rental.models import (  # noqa: E402
     AVAILABILITY_AVAILABLE,
     AVAILABILITY_MAINTENANCE,
@@ -242,6 +243,62 @@ def main():
               Boat.query.get("B3").jacuzzi is False)
         check("a boat that cannot have one reports None",
               Boat.query.get("B5").jacuzzi is None)
+
+        # 0b. Unsplash attribution. Their guideline is a credit naming the
+        #     photographer and linking to their profile, with referral
+        #     parameters on the link -- so the parameters are part of the
+        #     requirement, not decoration.
+        with app.test_client() as c:
+            body = c.get("/credits").get_data(as_text=True)
+            check("the credits page is reachable without signing in",
+                  "Photography" in body, body[:200])
+            check("photographers are named", "Marcin Ciszewski" in body, body[:300])
+            check("each name links to their Unsplash profile",
+                  "https://unsplash.com/@collega" in body, body[:300])
+            check("profile links carry the referral parameters",
+                  "utm_source=imse_boat_rental&amp;utm_medium=referral" in body,
+                  body[:300])
+            # Photos appear on nearly every page, so the credit has to as well.
+            home = c.get("/login").get_data(as_text=True)
+            check("every page footer credits Unsplash",
+                  "Photographs from" in home and "/credits" in home, home[:300])
+            # Saying nothing about the photos we cannot attribute would read as
+            # a complete list when it is not.
+            check("the gap in the credits is stated, not hidden",
+                  "not listed above" in flat(body), body[:300])
+
+        check("a known photo resolves to its photographer",
+              (images.credit_for(images.CITY_IMAGES["Dubrovnik"]) or {}).get("name")
+              == "Ivan Ivankovic")
+        check("an unknown photo resolves to nothing",
+              images.credit_for("https://images.unsplash.com/photo-0000?w=1") is None)
+        check("a non-Unsplash url resolves to nothing",
+              images.credit_for("https://example.com/boat.jpg") is None)
+        check("credit_for tolerates a missing url", images.credit_for(None) is None)
+        check("each photographer is listed once",
+              len({p["name"] for p in images.photo_credits()})
+              == len(images.photo_credits()))
+
+        # A photo fetched live must credit itself, or the one path where the
+        # photographer is known for certain is the one that loses them. Fed a
+        # stub of the API's shape rather than calling Unsplash: the suite runs
+        # offline, and the rate limit is 50 requests an hour.
+        images._remember_credit({
+            "urls": {"raw": "https://images.unsplash.com/photo-9999test?ixid=abc"},
+            "user": {"name": "Ada Lovelace", "username": "ada"},
+        })
+        live = images.credit_for("https://images.unsplash.com/photo-9999test?w=600")
+        check("a live-fetched photo registers its photographer",
+              live is not None and live["name"] == "Ada Lovelace", f"{live}")
+        check("the registered profile link carries the parameters",
+              live is not None and live["profile"]
+              == "https://unsplash.com/@ada?utm_source=imse_boat_rental"
+                 "&utm_medium=referral", f"{live}")
+        # A malformed payload must not break a page render.
+        images._remember_credit({})
+        images._remember_credit({"urls": {}, "user": {"name": "No Handle"}})
+        check("a payload with no photographer is ignored",
+              all(p["name"] != "No Handle" for p in images.photo_credits()))
 
         # 1. Search with no available boats -> used to be a 500 (UnboundLocalError)
         with app.test_client() as c:
