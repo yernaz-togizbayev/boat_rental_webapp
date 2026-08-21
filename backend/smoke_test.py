@@ -1327,19 +1327,39 @@ def main():
                   and Rental.query.filter_by(ClientID=nina.ClientID).count() == 1,
                   body[:300] if nina else "registration never created the client")
 
-            # Already signed in -> no duplicate account on a refresh.
-            c.post("/register", data=registration(email="nina2@example.com",
-                                                  captain_license="CAPT-555002"),
-                   follow_redirects=True)
-            check("a signed-in client cannot register again",
-                  Client.query.count() == before + 1)
+            # Registering while signed in switches accounts rather than being
+            # turned away: the link lives on the identity picker, so bouncing
+            # to the home page did nothing and explained nothing.
+            body = c.get("/register").get_data(as_text=True)
+            check("a signed-in client reaches the registration form",
+                  "Create" in body and "first_name" in body, body[:300])
+            check("and is told the old session ended",
+                  "so you can create a new one" in flat(body), body[:400])
+            check("the sign-out happens on arrival, not on submit",
+                  c.get("/report").status_code == 302)
 
+            body = c.post("/register", data=registration(email="nina2@example.com",
+                                                         captain_license="CAPT-555002"),
+                          follow_redirects=True).get_data(as_text=True)
+            check("the second account is created", Client.query.count() == before + 2)
+            check("and the client is signed in as the new one",
+                  "Welcome, Nina" in body, body[:300])
+            newest = Client.query.filter_by(Email="nina2@example.com").first()
+            check("the first account still exists to sign back into",
+                  Client.query.filter_by(Email="nina@example.com").first() is not None)
+            check("the two are different rows",
+                  newest is not None and newest.Email != "nina@example.com")
+
+        # Rebased rather than counted from `before`: how many accounts the
+        # block above creates is the thing under test up there, and this check
+        # only cares that a refused registration adds none.
+        registered = Client.query.count()
         with app.test_client() as c:
             body = c.post("/register", data=registration(email="other@example.com"),
                           follow_redirects=True).get_data(as_text=True)
             check("duplicate captain licence is refused", "must be unique" in body, body[:300])
             check("no client row after the refused registration",
-                  Client.query.count() == before + 1)
+                  Client.query.count() == registered)
 
         # A blank licence must be stored as NULL, not "": the column is UNIQUE,
         # and two empty strings would collide where two NULLs do not.

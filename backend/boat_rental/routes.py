@@ -103,9 +103,18 @@ def register_client():
     picker over every client, so the next click would grant the same access
     anyway. Without it a new user has to find their own name in an unsorted
     list that grows with every registration.
+
+    Arriving already signed in signs you out rather than turning you away. The
+    link lives on /login, which is the identity picker -- being there at all
+    means changing who you are -- so bouncing to the home page did nothing and
+    explained nothing. Nothing is lost either: the account still exists and is
+    one click away on /login. Said out loud, because a session ending quietly
+    is worse than one ending.
     """
     if "client" in session:
-        return redirect(url_for("home"))
+        who = session["client"].get("FirstName", "that account")
+        sign_out()
+        flash(f"Signed out of {who}'s account so you can create a new one.", "info")
 
     form = ClientRegistrationForm()
     if form.validate_on_submit():
