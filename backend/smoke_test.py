@@ -369,7 +369,7 @@ def main():
             # before anything is sent. The guard is convenience, so the server
             # still has to refuse a POST with no boat in it.
             check("the reserve button has something to complain into",
-                  'id="book-hint"' in body, body[:300])
+                  'id="book-error"' in body, body[:300])
             check("the guard against reserving nothing is shipped",
                   'input[name="boat_id"]:checked' in body, body[:300])
             rentals_now = Rental.query.count()

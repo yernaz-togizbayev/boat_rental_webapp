@@ -499,12 +499,26 @@ label.spec-plate { display: block; cursor: pointer; margin: 0; }
   color: var(--sound);
 }
 
-/* Pressing Reserve with nothing picked turns the standing hint into the
-   complaint, in the colour this chart uses for caution. It needs no clearing:
-   the rule below hides the line the moment a radio is checked. */
-.book-hint.is-error { color: var(--magenta); font-weight: 600; }
+/* Shown only after pressing Reserve with nothing picked. flex-basis:100% puts
+   it on its own row in the bar, under the button that was just pressed, so it
+   arrives as a new thing appearing rather than as a line of small print
+   changing wording. Needs no clearing: the rule below retires it the moment a
+   radio is checked. */
+.book-error {
+  flex-basis: 100%;
+  margin: .35rem 0 0;
+  text-align: right;
+  font-size: var(--step-0);
+  font-weight: 600;
+  color: var(--magenta);
+}
+.book-error[hidden] { display: none; }
 
+/* The hint keeps `visibility`, which holds its space so the button does not
+   shift when a boat is picked; the error takes `display` so its whole row
+   collapses. */
 .plate-grid:has(.plate-radio:checked) ~ .book-bar .book-hint { visibility: hidden; }
+.plate-grid:has(.plate-radio:checked) ~ .book-bar .book-error { display: none; }
 
 .spec-plate .plate-photo {
   display: block;

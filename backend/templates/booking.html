@@ -136,10 +136,12 @@
 
     {% if booking_form %}
     <div class="book-bar">
-      {# role=status so the complaint below is announced, not just shown. The
-         stylesheet hides this line as soon as a radio is checked, so it can
-         carry the error without needing to be cleared again. #}
-      <p class="book-hint" id="book-hint" role="status">Pick a boat above, then book it.</p>
+      <p class="book-hint">Pick a boat above, then book it.</p>
+      {# Its own line rather than a recolouring of the hint above: that line is
+         11px grey uppercase, and swapping its wording for something similar in
+         a different colour is a change you can look straight at and miss.
+         role=alert so it is announced the moment it appears. #}
+      <p class="book-error" id="book-error" role="alert" hidden>Please pick a boat first.</p>
       <button type="submit" name="book" value="true" class="btn btn-success btn-lg js-confirm"
               data-confirm="Reserve this boat for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}? You will pay on the next screen.">
         Reserve for {{ rental_days }} day{{ 's' if rental_days != 1 else '' }}
@@ -166,21 +168,22 @@
     // browsers cannot show a validation bubble on a control they cannot focus,
     // and refuse to submit without telling anyone why.
     document.querySelectorAll('.js-confirm').forEach(function (btn) {
-      var hint = document.getElementById('book-hint');
-      var grid = document.querySelector('.plate-grid');
+      var error = document.getElementById('book-error');
+      var bar = document.querySelector('.book-bar');
 
       btn.addEventListener('click', function (event) {
         if (!document.querySelector('input[name="boat_id"]:checked')) {
           event.preventDefault();
-          if (hint) {
-            hint.textContent = 'Please pick a boat first.';
-            hint.classList.add('is-error');
-          }
-          // The button can be a screen below the boats it is complaining
-          // about; bring them back into view rather than pointing offscreen.
-          if (grid) {
+          if (error) error.hidden = false;
+          // Scroll the bar, not the boat grid. Scrolling to the grid pushes
+          // this button off the bottom of the screen, taking the message with
+          // it -- the complaint ends up somewhere the reader cannot see, which
+          // reads as the button doing nothing at all. block:'nearest' means
+          // this barely moves when the button is already on screen, which it
+          // is: they just clicked it.
+          if (bar) {
             var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            grid.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'nearest' });
+            bar.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'nearest' });
           }
           return;
         }
