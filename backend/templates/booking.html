@@ -81,7 +81,7 @@
 {% endif %}
 
 {% if display_boats %}
-<div class="content-section rise">
+<div class="content-section rise" id="search-results">
   <div class="page-head">
     <div class="head-row">
       <div>
@@ -165,12 +165,29 @@
 </div>
 
 {% elif search_params.city %}
-<div class="content-section rise">
+<div class="content-section rise" id="search-results">
   <div class="alert alert-info mb-0">
     <h4>No boats here yet</h4>
     <p><strong>{{ search_params.city }}</strong> has no boats on its books.</p>
     <p>Try another harbour.</p>
   </div>
 </div>
+{% endif %}
+
+{% if search_params.city %}
+<script>
+  // A search re-renders the whole page, so the reader lands back at the top
+  // looking at the form they have just used, with the answer below the fold.
+  // Both outcomes carry #search-results -- boats found, and the harbour that
+  // has none -- so an empty result scrolls to the explanation rather than
+  // leaving the page apparently unchanged.
+  (function () {
+    var results = document.getElementById('search-results');
+    if (!results) return;
+    // Honour the same preference the stylesheet does for its animations.
+    var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    results.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+  })();
+</script>
 {% endif %}
 {% endblock %}

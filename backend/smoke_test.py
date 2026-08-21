@@ -362,6 +362,14 @@ def main():
             def offered(boat_id):
                 return f'value="{boat_id}"' in body
 
+            # A search re-renders the page, so the results land below the form.
+            # The anchor and the script that jumps to it have to be present, or
+            # the reader is left staring at the picker they just used.
+            check("a search renders the scroll anchor",
+                  'id="search-results"' in body, body[:300])
+            check("and the script that jumps to it",
+                  "getElementById('search-results')" in body, body[:300])
+
             check("search offers the available boat", offered("B1"))
             check("search does not offer the maintenance boat", not offered("B2"))
             check("the maintenance boat is still shown", "B2" in body)
@@ -370,6 +378,14 @@ def main():
 
             # A yacht's jacuzzi is stated either way. Shown only when present,
             # "no jacuzzi" and "we never recorded it" looked identical.
+            # No search, nothing to jump to: the anchor and its script must be
+            # absent, or the page scrolls past the form on a plain visit.
+            fresh = c.get("/booking").get_data(as_text=True)
+            check("a fresh booking page has no scroll anchor",
+                  'id="search-results"' not in fresh, fresh[:300])
+            check("and does not carry the jump script",
+                  "getElementById('search-results')" not in fresh, fresh[:300])
+
             check("booking still carries the shared date-sync script",
                   "drags the end date to the day after" in body, body[:300])
 
@@ -903,6 +919,18 @@ def main():
                 "street": "Riva 1", "zip": "21450", "submit": "Save office",
             }, follow_redirects=True)
             hvar = Office.query.filter_by(City="Hvar").first()
+
+            # A harbour with an office but no boats takes the *other* branch of
+            # the results section. It needs the anchor too: an empty search is
+            # exactly when the page looks unchanged if it does not scroll.
+            with app.test_client() as shopper:
+                as_client(shopper, "C1")
+                empty = search(shopper, "Hvar").get_data(as_text=True)
+                check("an empty harbour explains itself",
+                      "no boats on its books" in flat(empty), empty[:300])
+                check("an empty result carries the scroll anchor",
+                      'id="search-results"' in empty, empty[:300])
+
             before = (Office.query.count(), Client.query.count(),
                       Rental.query.count(), Boat.query.count())
 

@@ -98,6 +98,9 @@ a:hover { color: var(--magenta); text-decoration-color: currentColor; }
   top: 0;
   z-index: 1020;
 }
+/* The header stays put, so anything scrolled to would sit underneath it.
+   Applies to the search results the booking page jumps to after a search. */
+#search-results { scroll-margin-top: 4.5rem; }
 .site-header .navbar {
   background: var(--ink) !important;
   padding: 0.5rem 0;
