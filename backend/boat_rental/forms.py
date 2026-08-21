@@ -3,7 +3,8 @@ from flask_wtf import FlaskForm
 from wtforms import SelectField, EmailField, DateField, SubmitField, StringField, HiddenField, BooleanField, IntegerField, FloatField, DecimalField
 from wtforms.validators import DataRequired, Email, Optional, Length, NumberRange, ValidationError
 from datetime import date, timedelta
-from boat_rental.models import Office, AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE
+from boat_rental.models import (Office, served_cities,
+                                AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE)
 
 
 def validate_future_date(form, field):
@@ -102,9 +103,13 @@ class BookingSearchForm(FlaskForm):
     def __init__(self, *args, **kwargs):
         super(BookingSearchForm, self).__init__(*args, **kwargs)
         try:
-            cities = Office.query.with_entities(Office.City).distinct().all()
+            # served_cities() rather than a query of its own: it is the shared
+            # definition of where we operate. The query here was distinct but
+            # unordered, so the picker came out in whatever order the offices
+            # were created in -- fine for the five seeded ones, arbitrary as
+            # soon as a manager opens a harbour.
             self.city.choices = [("", "Select City...")] + [
-                (city[0], city[0]) for city in cities
+                (city, city) for city in served_cities()
             ]
         except Exception:
             # The office table may not exist yet (first boot, before the

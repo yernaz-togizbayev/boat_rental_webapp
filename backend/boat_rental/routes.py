@@ -24,6 +24,7 @@ from boat_rental.models import (
     PAYMENT_PAID,
     PAYMENT_UNPAID,
     charter_total,
+    served_cities,
     Office,
     Client,
     Boat,
@@ -65,14 +66,6 @@ def sign_out():
     for key in EXCLUSIVE_SESSION_KEYS:
         session.pop(key, None)
 
-def served_cities():
-    """Every city the fleet operates in, alphabetically.
-
-    There is no City table -- a city exists because an Office row names it -- so
-    this is the only definition of "where we operate", and the home page, the
-    booking picker and the manager rentals filter must all agree on it.
-    """
-    return [c for (c,) in Office.query.with_entities(Office.City).distinct().order_by(Office.City)]
 
 
 def manager_required(f):

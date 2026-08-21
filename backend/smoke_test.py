@@ -300,6 +300,40 @@ def main():
         check("a payload with no photographer is ignored",
               all(p["name"] != "No Handle" for p in images.photo_credits()))
 
+        # 0c. The harbour picker on the booking page is a plain <select>, so
+        #     its order is exactly its option list, and it used to follow office
+        #     insertion order. Deduplication was never broken -- that query was
+        #     already distinct -- but the check below keeps it that way.
+        #
+        #     The seeded cities happen to be inserted alphabetically, so a sort
+        #     check over them alone would pass whether or not anything sorts.
+        #     These two offices are added last on purpose: Ancona sorts first
+        #     and Zadar sorts last, and the second one shares Dubrovnik's city
+        #     to prove the deduplication.
+        db.session.add(Office(OfficeID="O90", Street="Porto 1", Country="IT",
+                              City="Ancona", ZIP="60121"))
+        db.session.add(Office(OfficeID="O91", Street="Quay 1b", Country="HR",
+                              City="Dubrovnik", ZIP="20001"))
+        db.session.commit()
+        with app.test_client() as c:
+            as_client(c, "C1")
+            body = c.get("/booking").get_data(as_text=True)
+            picker = re.search(r'<select[^>]+name="city".*?</select>', body, re.S)
+            options = re.findall(r'<option value="([^"]*)"', picker.group(0)) if picker else []
+            listed = [o for o in options if o]
+            check("the harbour picker is alphabetical", listed == sorted(listed),
+                  f"{listed}")
+            check("a city added last still sorts first",
+                  listed and listed[0] == "Ancona", f"{listed}")
+            check("a city with two offices is listed once",
+                  listed.count("Dubrovnik") == 1, f"{listed}")
+            check("the picker keeps its empty prompt first",
+                  options and options[0] == "", f"{options[:3]}")
+        # Removed again so later counts and pickers are unaffected.
+        Office.query.filter(Office.OfficeID.in_(["O90", "O91"])).delete(
+            synchronize_session=False)
+        db.session.commit()
+
         # 1. Search with no available boats -> used to be a 500 (UnboundLocalError)
         with app.test_client() as c:
             as_client(c, "C1")

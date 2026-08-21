@@ -86,6 +86,20 @@ class Office(db.Model):
     employees = db.relationship("Employee", backref="office", lazy=True)
 
 
+def served_cities():
+    """Every city the fleet operates in, alphabetically, each once.
+
+    There is no City table -- a city exists because an Office row names it --
+    so this is the only definition of "where we operate". The home page, the
+    booking picker, the availability filter and the manager rentals filter all
+    have to agree on it, which is why it lives here in models rather than in
+    routes: forms.py needs it too, and cannot import routes without closing a
+    circular loop.
+    """
+    return [c for (c,) in Office.query.with_entities(Office.City)
+                                      .distinct().order_by(Office.City)]
+
+
 class Client(db.Model):
     __tablename__ = "Client"
     ClientID = db.Column(db.String(50), primary_key=True)
