@@ -365,6 +365,20 @@ def main():
             # A search re-renders the page, so the results land below the form.
             # The anchor and the script that jumps to it have to be present, or
             # the reader is left staring at the picker they just used.
+            # Pressing Reserve with nothing picked is caught in the page now,
+            # before anything is sent. The guard is convenience, so the server
+            # still has to refuse a POST with no boat in it.
+            check("the reserve button has something to complain into",
+                  'id="book-hint"' in body, body[:300])
+            check("the guard against reserving nothing is shipped",
+                  'input[name="boat_id"]:checked' in body, body[:300])
+            rentals_now = Rental.query.count()
+            crafted = book(c, "").get_data(as_text=True)
+            check("a boat-less booking is refused by the server too",
+                  BOOKED not in crafted, crafted[:300])
+            check("and writes no rental",
+                  Rental.query.count() == rentals_now)
+
             check("a search renders the scroll anchor",
                   'id="search-results"' in body, body[:300])
             check("and the script that jumps to it",
