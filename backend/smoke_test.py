@@ -384,6 +384,23 @@ def main():
             check("and the script that jumps to it",
                   "getElementById('search-results')" in body, body[:300])
 
+            # A bare city name says little for a harbour nobody has heard of,
+            # so every place one is shown to a client names the country too.
+            # The value submitted stays the bare city: it is what the filters,
+            # the images and stocked_cities all key off.
+            check("the dropdown names the country",
+                  ">Dubrovnik, HR<" in body, body[:300])
+            # Regex, not a literal: the searched-for option also carries
+            # `selected`, so the attribute order is not fixed.
+            check("the dropdown still submits the bare city",
+                  re.search(r'<option[^>]*value="Dubrovnik"[^>]*>\s*Dubrovnik, HR', body)
+                  is not None,
+                  (re.search(r'<option[^>]*Dubrovnik[^<]*<', body) or ["?"])[0])
+            check("the harbour cards name the country",
+                  "Dubrovnik<small>HR</small>" in body, body[:300])
+            check("the boat cards name the country",
+                  "Dubrovnik, HR" in body, body[:300])
+
             check("search offers the available boat", offered("B1"))
             check("search does not offer the maintenance boat", not offered("B2"))
             check("the maintenance boat is still shown", "B2" in body)

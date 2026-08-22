@@ -37,11 +37,11 @@
 
 {% include "partials/date_range_script.html" %}
 
-{% if cities %}
+{% if harbours %}
 {# Harbour picker. Clicking a card fills the select above rather than
    submitting, so the dates you already typed survive the choice. #}
 <div class="harbours rise">
-  {% for city in cities %}
+  {% for city, country in harbours %}
   {% set stocked = city in stocked_cities %}
   <button type="button" class="harbour {{ 'is-picked' if city == search_params.city }} {{ 'is-empty' if not stocked }}"
           data-city="{{ city }}" {{ 'disabled' if not stocked }}
@@ -50,7 +50,10 @@
     {% if city_images.get(city) %}
       <img src="{{ city_images[city] }}" alt="" loading="lazy">
     {% endif %}
-    <span class="harbour-label">{{ city }}</span>
+    {# The country on its own line: "Sant Antoni" and "Aktau" mean nothing to
+       most readers without one, and a comma-joined pair wraps badly in a card
+       this narrow. #}
+    <span class="harbour-label">{{ city }}<small>{{ country }}</small></span>
     {% if not stocked %}<span class="harbour-note">No boats yet</span>{% endif %}
   </button>
   {% endfor %}

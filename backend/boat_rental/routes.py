@@ -25,6 +25,7 @@ from boat_rental.models import (
     PAYMENT_UNPAID,
     charter_total,
     served_cities,
+    served_harbours,
     Office,
     Client,
     Boat,
@@ -243,7 +244,10 @@ def booking():
         booking_form = build_booking_form(search_params, available_boats)
         rental_days = (search_params["end_date"] - search_params["start_date"]).days
 
-    cities = served_cities()
+    # Pairs, so a card can say which country its harbour is in. The image
+    # lookup and stocked_cities still key off the bare city name.
+    harbours = served_harbours()
+    cities = [city for city, _country in harbours]
     city_images, boat_type_images = images.city_and_boat_images(cities)
     # Conditions deliberately match get_available_boats(): maintenance-only and
     # unpriced both count as unstocked, because neither can be booked. If these
@@ -264,7 +268,7 @@ def booking():
         display_boats=display_boats,
         search_params=search_params,
         rental_days=rental_days,
-        cities=cities,
+        harbours=harbours,
         stocked_cities=stocked_cities,
         city_images=city_images,
         boat_type_images=boat_type_images,
@@ -440,7 +444,8 @@ def analytics():
     # served_cities() rather than every Office row: two offices in one city
     # would otherwise list it twice, and it is the shared definition of where
     # we operate, already alphabetical.
-    cities = served_cities()
+    harbours = served_harbours()
+    cities = [city for city, _country in harbours]
 
     # No harbour until one is asked for. Defaulting to a city meant the page
     # opened on figures for somewhere nobody had chosen, which reads as a
@@ -492,6 +497,7 @@ def analytics():
         available_count=available_count,
         rentals_in_period=rentals_in_period,
         cities=cities,
+        harbours=harbours,
     )
 
 

@@ -3,7 +3,7 @@ from flask_wtf import FlaskForm
 from wtforms import SelectField, EmailField, DateField, SubmitField, StringField, HiddenField, BooleanField, IntegerField, FloatField, DecimalField
 from wtforms.validators import DataRequired, Email, Optional, Length, NumberRange, ValidationError
 from datetime import date, timedelta
-from boat_rental.models import (Office, served_cities,
+from boat_rental.models import (Office, served_harbours,
                                 AVAILABILITY_AVAILABLE, AVAILABILITY_MAINTENANCE)
 
 
@@ -103,13 +103,16 @@ class BookingSearchForm(FlaskForm):
     def __init__(self, *args, **kwargs):
         super(BookingSearchForm, self).__init__(*args, **kwargs)
         try:
-            # served_cities() rather than a query of its own: it is the shared
-            # definition of where we operate. The query here was distinct but
-            # unordered, so the picker came out in whatever order the offices
-            # were created in -- fine for the five seeded ones, arbitrary as
-            # soon as a manager opens a harbour.
+            # served_harbours() rather than a query of its own: it is the
+            # shared definition of where we operate. The query here was
+            # distinct but unordered, so the picker came out in whatever order
+            # the offices were created in.
+            #
+            # The label carries the country; the value stays the bare city,
+            # because the city is what get_available_boats() and every card
+            # and filter key off.
             self.city.choices = [("", "Select City...")] + [
-                (city, city) for city in served_cities()
+                (city, f"{city}, {country}") for city, country in served_harbours()
             ]
         except Exception:
             # The office table may not exist yet (first boot, before the

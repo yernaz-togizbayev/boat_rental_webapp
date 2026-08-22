@@ -376,6 +376,17 @@ a:hover { color: var(--magenta); text-decoration-color: currentColor; }
   color: #fff;
   text-align: left;
 }
+/* The country under the city rather than beside it: these sit over a photo in
+   a narrow card, and a comma-joined pair wraps mid-name. Dimmed so the city
+   still reads first, and shadowed because whatever is behind it is a
+   photograph and cannot be relied on to be dark. */
+.harbour-label small {
+  display: block;
+  font-size: var(--step--2);
+  letter-spacing: .08em;
+  opacity: .8;
+  text-shadow: 0 1px 3px rgba(10, 35, 51, .9);
+}
 .harbour:hover { border-color: var(--shallow-dp); transform: translateY(-2px); box-shadow: var(--shadow); }
 .harbour:hover img { opacity: .9; transform: scale(1.04); }
 .harbour.is-picked {

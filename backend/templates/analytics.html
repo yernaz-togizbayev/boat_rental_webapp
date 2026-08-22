@@ -38,9 +38,13 @@
           <datalist id="harbours">
             {% for city in cities %}<option value="{{ city }}"></option>{% endfor %}
           </datalist>
+          {# The option shows the country, data-value stays the bare city --
+             that is what goes into the field and what the filter keys off.
+             The script matches on the visible text, so typing "Croatia" finds
+             Dubrovnik as well as typing "Dubro" does. #}
           <ul class="combo-list" id="harbour-list" role="listbox" hidden>
-            {% for city in cities %}
-            <li class="combo-option" role="option" data-value="{{ city }}">{{ city }}</li>
+            {% for city, country in harbours %}
+            <li class="combo-option" role="option" data-value="{{ city }}">{{ city }}, {{ country }}</li>
             {% endfor %}
           </ul>
         </div>
@@ -151,7 +155,7 @@
             {% else %}<span class="no-extra">No</span>{% endif %}
           </td>
           <td><span class="num">{{ boat.DailyRate | money }}</span></td>
-          <td>{{ office.City }}</td>
+          <td>{{ office.City }}, {{ office.Country }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -208,7 +212,9 @@
 
     function open(query) {
       options.forEach(function (o) {
-        o.hidden = !matches(o.dataset.value, query || '');
+        // Matched against the visible label, not the value, so the country
+        // narrows the list too: "Greece" finds Mykonos and Santorini.
+        o.hidden = !matches(o.textContent, query || '');
       });
       var any = shown().length > 0;
       list.hidden = !any;

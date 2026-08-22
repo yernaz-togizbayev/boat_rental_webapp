@@ -1,6 +1,8 @@
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
+from sqlalchemy import func
+
 from boat_rental import db
 
 # Boat.AvailabilityStatus values. Kept as constants because the SQL seed data
@@ -86,8 +88,8 @@ class Office(db.Model):
     employees = db.relationship("Employee", backref="office", lazy=True)
 
 
-def served_cities():
-    """Every city the fleet operates in, alphabetically, each once.
+def served_harbours():
+    """(city, country) for everywhere the fleet operates, alphabetically.
 
     There is no City table -- a city exists because an Office row names it --
     so this is the only definition of "where we operate". The home page, the
@@ -95,9 +97,21 @@ def served_cities():
     have to agree on it, which is why it lives here in models rather than in
     routes: forms.py needs it too, and cannot import routes without closing a
     circular loop.
+
+    Grouped so a city with two offices appears once. The country is picked with
+    min() rather than joined, because everything downstream keys off the city
+    and a city listed twice would be a duplicate option, a duplicate card and
+    an ambiguous filter -- two offices in one city disagreeing about their
+    country is a data-entry error, not a case to render.
     """
-    return [c for (c,) in Office.query.with_entities(Office.City)
-                                      .distinct().order_by(Office.City)]
+    return [(city, country) for city, country in
+            Office.query.with_entities(Office.City, func.min(Office.Country))
+                        .group_by(Office.City).order_by(Office.City)]
+
+
+def served_cities():
+    """Just the city names, for the places that key off them."""
+    return [city for city, _country in served_harbours()]
 
 
 class Client(db.Model):
