@@ -441,18 +441,21 @@ def analytics():
     # would otherwise list it twice, and it is the shared definition of where
     # we operate, already alphabetical.
     cities = served_cities()
-    default_city = "Dubrovnik" if "Dubrovnik" in cities else (cities[0] if cities else "")
 
-    # The harbour field is a datalist, so it can be typed into as well as
-    # picked from -- which means an unrecognised city can arrive and has to be
-    # said out loud. Reporting "0 free in Atlantis" would read as a fleet
-    # problem rather than a typo. Matched case-insensitively, because a field
-    # you type into invites "dubrovnik".
+    # No harbour until one is asked for. Defaulting to a city meant the page
+    # opened on figures for somewhere nobody had chosen, which reads as a
+    # report rather than as a prompt -- and quietly favoured one harbour over
+    # the rest of the fleet.
+    #
+    # The field is a datalist, so it can be typed into as well as picked from,
+    # and an unrecognised city has to be said out loud: "0 free in Atlantis"
+    # would read as a fleet problem rather than a typo. Matched
+    # case-insensitively, because a field you type into invites "dubrovnik".
     requested = (request.args.get("city") or "").strip()
     by_fold = {city.casefold(): city for city in cities}
-    filtered_city = by_fold.get(requested.casefold(), default_city)
-    if requested and requested.casefold() not in by_fold:
-        flash(f"We don't have a harbour in {requested} — showing {filtered_city}.",
+    filtered_city = by_fold.get(requested.casefold())
+    if requested and filtered_city is None:
+        flash(f"We don't have a harbour in {requested}. Pick one from the list.",
               "warning")
 
     default_start = date.today()
@@ -464,13 +467,18 @@ def analytics():
         flash("End date must be after start date — showing the default range.", "warning")
         start_date, end_date = default_start, default_end
 
-    available_boats = get_available_boats(filtered_city, start_date, end_date)
+    # Both of these are questions about a named harbour, so neither is asked
+    # until there is one. Called with no city they would report zero, which is
+    # a different claim from "you have not chosen yet".
+    available_boats = (get_available_boats(filtered_city, start_date, end_date)
+                       if filtered_city else [])
+    rentals_in_period = (rentals_in_city(filtered_city, start_date, end_date)
+                         if filtered_city else 0)
 
     total_boats = Boat.query.count()
     available_count = Boat.query.filter_by(
         AvailabilityStatus=AVAILABILITY_AVAILABLE
     ).count()
-    rentals_in_period = rentals_in_city(filtered_city, start_date, end_date)
     period_days = (end_date - start_date).days
 
     return render_template(

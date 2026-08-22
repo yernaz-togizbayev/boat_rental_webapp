@@ -26,7 +26,10 @@
            it takes over, or a browser would show two dropdowns at once. #}
         <div class="combo" id="harbour-combo">
           <input list="harbours" name="city" id="city" class="form-control combo-input"
-                 value="{{ current_filter }}" autocomplete="off"
+                 {# `or ''` because no harbour chosen is None, and Jinja prints
+                    that as the word "None" -- which would sit in the box and
+                    hide the placeholder. #}
+                 value="{{ current_filter or '' }}" autocomplete="off"
                  placeholder="Type or pick a harbour"
                  role="combobox" aria-expanded="false" aria-autocomplete="list"
                  aria-controls="harbour-list">
@@ -70,6 +73,10 @@
     <span class="figure">{{ available_count }}</span>
     <span class="label">Not in maintenance</span>
   </div>
+  {# The last two are about one harbour, so they only appear once there is
+     one. Shown as "0 free in —" before a choice is made, they would read as a
+     fleet with nothing available rather than as a question not yet asked. #}
+  {% if current_filter %}
   <div class="stat is-accent">
     <span class="figure">{{ boats|length }}</span>
     <span class="label">Free in {{ current_filter }}</span>
@@ -78,8 +85,20 @@
     <span class="figure" id="rentals-in-period">{{ rentals_in_period }}</span>
     <span class="label">Rentals in {{ current_filter }}</span>
   </div>
+  {% endif %}
 </div>
 
+{# Nothing is reported until a harbour is named. The page opens as a question
+   rather than as a report about a city the reader never asked for. #}
+{% if not current_filter %}
+<div class="content-section rise">
+  <div class="alert alert-info mb-0">
+    <h4>Pick a harbour</h4>
+    <p>Choose one above to see which of its boats are free over your dates,
+       and how much of the fleet that is.</p>
+  </div>
+</div>
+{% else %}
 <div class="content-section">
   <div class="page-head">
     <div class="head-row">
@@ -147,6 +166,7 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
 
 <script>
   // Harbour combobox: click the field (or the chevron) for the whole list,

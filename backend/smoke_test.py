@@ -664,6 +664,27 @@ def main():
             check("analytics no longer defaults to the stale 2025 window",
                   "2025-07-01" not in r2.get_data(as_text=True))
 
+            # Opening the page picks no harbour. It used to land on Dubrovnik,
+            # reporting figures for a city the reader had not chosen -- and
+            # quietly favouring one harbour over the rest of the fleet.
+            opening = r2.get_data(as_text=True)
+            check("no harbour is chosen on arrival",
+                  "Available Boats in" not in flat(opening), opening[:400])
+            check("the page asks for one instead",
+                  "Pick a harbour" in opening, opening[:400])
+            check("the harbour field starts empty",
+                  re.search(r'id="city"[^>]*value=""', opening) is not None,
+                  (re.search(r'<input[^>]*id="city"[^>]*>', opening) or ["?"])[0])
+            # The two city-scoped figures are questions about a named harbour,
+            # so they must not be answered with a zero before one is named.
+            check("no city-scoped figures before a harbour is picked",
+                  "Free in" not in opening and "Rentals in" not in opening,
+                  opening[:400])
+            # The fleet-wide ones are still true without a city.
+            check("the fleet-wide figures still show",
+                  "Boats in fleet" in opening and "Not in maintenance" in opening,
+                  opening[:400])
+
             # The harbour picker is a datalist, so it can be typed into. That
             # makes an unrecognised city reachable, and it must be named as a
             # typo rather than reported as an empty fleet.
@@ -715,8 +736,12 @@ def main():
             body = c.get("/analytics?city=Atlantis").get_data(as_text=True)
             check("an unknown harbour is called out, not reported as empty",
                   "don&#39;t have a harbour in Atlantis" in body, body[:400])
-            check("an unknown harbour falls back to a real one",
-                  "Available Boats in Dubrovnik" in flat(body), body[:400])
+            # No fallback any more: reporting on Dubrovnik under a warning
+            # about Atlantis answered a question nobody asked.
+            check("an unknown harbour reports on nothing",
+                  "Available Boats in" not in flat(body), body[:400])
+            check("an unknown harbour asks again",
+                  "Pick a harbour" in body, body[:400])
 
             # Typing into a field invites lowercase; it must not look unserved.
             body = c.get("/analytics?city=dubrovnik").get_data(as_text=True)
